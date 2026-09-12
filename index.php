@@ -65,6 +65,7 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
 <html lang="de">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swiyu Trust Registry Explorer</title>
 <style>
     body { font-family: Arial, sans-serif; margin: 2em; color: #222; background: #fafafa; }
@@ -94,6 +95,7 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
     tr.entry-row.expandable:hover { background: #f7fbff; }
     tr.entry-row .caret { display: inline-block; width: 14px; color: #0b5fa5; }
     tr.detail-row { display: none; background: #fbfcfe; }
+    tr.detail-row.open { display: table-row; }
     tr.detail-row td { padding: 14px 20px; }
     .detail-section { margin-bottom: 14px; }
     .detail-section h4 { margin: 0 0 6px; font-size: 13px; color: #0b5fa5; }
@@ -110,6 +112,48 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
 
     .error { background: #fdecea; border: 1px solid #f5c2c0; color: #a12622; padding: 12px; border-radius: 6px; }
     .meta { font-size: 12px; color: #888; margin-top: 8px; }
+
+    /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
+    @media (max-width: 640px) {
+        body { margin: 0.75em; }
+
+        .tabs { gap: 4px; }
+        .tabs a { flex: 1; text-align: center; padding: 10px 4px; }
+
+        .api-chips { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+        .api-chips a { flex: 0 0 auto; }
+        .api-chips small { display: none; } /* Beschreibung spart Platz, Kürzel reicht auf Mobile */
+
+        .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+        .toolbar .url { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .toolbar > div { justify-content: space-between; }
+        .toolbar form { flex: 1; }
+        .toolbar input[type=text] { flex: 1; min-width: 0; }
+
+        table, thead, tbody, tr, th, td { display: block; width: 100%; box-sizing: border-box; }
+        thead { display: none; }
+        table { border: none; background: transparent; }
+
+        tr.entry-row { background: #fff; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 8px; padding: 6px 10px; }
+        tr.entry-row td { border: none; padding: 5px 0; }
+        tr.entry-row td[data-label]::before {
+            content: attr(data-label);
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: #999;
+            margin-bottom: 1px;
+        }
+
+        tr.detail-row.open { display: block; }
+        tr.detail-row { border: none; margin: -8px 0 8px; }
+        tr.detail-row td { padding: 12px 14px; background: #fbfcfe; border: 1px solid #ddd; border-top: none; border-radius: 0 0 10px 10px; }
+
+        table.detail-kv th { width: 40%; }
+
+        .pagination { justify-content: space-between; }
+    }
 </style>
 </head>
 <body>
@@ -181,7 +225,7 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
                 <?php foreach ($pageEntries as $i => $entry): ?>
                     <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
                         <?php foreach ($config['apis'][$apiKey]['columns'] as $j => $col): ?>
-                            <td>
+                            <td data-label="<?= htmlspecialchars($col['label']) ?>">
                                 <?php if ($isExpandable && $j === 0): ?>
                                     <span class="caret">&#9656;</span>
                                 <?php endif; ?>
@@ -231,10 +275,9 @@ document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
     row.addEventListener('click', function () {
         var detail = row.nextElementSibling;
         if (!detail || !detail.classList.contains('detail-row')) return;
-        var isOpen = detail.style.display === 'table-row';
-        detail.style.display = isOpen ? 'none' : 'table-row';
+        var isOpen = detail.classList.toggle('open');
         var caret = row.querySelector('.caret');
-        if (caret) caret.innerHTML = isOpen ? '&#9656;' : '&#9662;';
+        if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
     });
 });
 </script>
