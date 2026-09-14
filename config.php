@@ -22,9 +22,9 @@ return [
     'environments' => [
         'REF'  => ['label' => 'REF',  'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
         'ABN'  => ['label' => 'ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch'],
-        'INT-ABN'  => ['label' => 'ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch'],
+        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch'],
         'PROD' => ['label' => 'PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch'],
-        'INT-PROD' => ['label' => 'PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch'],
+        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch'],
     ],
 
     'apis' => [
