@@ -105,6 +105,228 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
     .detail-raw { color: #999; font-size: 11px; }
     ul.detail-list { margin: 0; padding-left: 18px; font-size: 12px; }
     .detail-empty { color: #999; }
+    .value-empty { color: #b06a00; font-style: italic; }
+
+    .pagination { margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
+    .pagination a { text-decoration: none; color: #0b5fa5; }
+    .pagination a.disabled { color: #bbb; pointer-events: none; }
+
+    .error { background: #fdecea; border: 1px solid #f5c2c0; color: #a12622; padding: 12px; border-radius: 6px; }
+    .meta { font-size: 12px; color: #888; margin-top: 8px; }
+
+    /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
+    @media (max-width: 640px) {
+        body { margin: 0.75em; }
+
+        .tabs { gap: 4px; }
+        .tabs a { flex: 1; text-align: center; padding: 10px 4px; }
+
+        .api-chips { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+        .api-chips a { flex: 0 0 auto; }
+        .api-chips small { display: none; } /* Beschreibung spart Platz, Kürzel reicht auf Mobile */
+
+        .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+        .toolbar .url { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .toolbar > div { justify-content: space-between; }
+        .toolbar form { flex: 1; }
+        .toolbar input[type=text] { flex: 1; min-width: 0; }
+
+        table, thead, tbody, tr, th, td { display: block; width: 100%; box-sizing: border-box; }
+        thead { display: none; }
+        table { border: none; background: transparent; }
+
+        tr.entry-row { background: #fff; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 8px; padding: 6px 10px; }
+        tr.entry-row td { border: none; padding: 5px 0; }
+        tr.entry-row td[data-label]::before {
+            content: attr(data-label);
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: #999;
+            margin-bottom: 1px;
+        }
+
+        tr.detail-row.open { display: block; }
+        tr.detail-row { border: none; margin: -8px 0 8px; }
+        tr.detail-row td { padding: 12px 14px; background: #fbfcfe; border: 1px solid #ddd; border-top: none; border-radius: 0 0 10px 10px; }
+
+        table.detail-kv th { width: 40%; }
+
+        .pagination { justify-content: space-between; }
+    }
+</style>
+</head>
+<body>
+
+<h1>Swiyu Trust Registry Explorer</h1>
+
+<div class="tabs">
+    <?php foreach ($config['environments'] as $key => $env): ?>
+        <a href="<?= htmlspecialchars(buildUrl($key, $apiKey, '', 0)) ?>"
+           class="<?= $key === $envKey ? 'active' : '' ?>"><?= htmlspecialchars($env['label']) ?></a>
+    <?php endforeach; ?>
+</div>
+
+<div class="api-chips">
+    <?php foreach ($config['apis'] as $key => $api): ?>
+        <a href="<?= htmlspecialchars(buildUrl($envKey, $key, '', 0)) ?>"
+           class="<?= $key === $apiKey ? 'active' : '' ?>">
+            <?= htmlspecialchars($api['label']) ?>
+            <small><?= htmlspecialchars($api['description']) ?></small>
+        </a>
+    <?php endforeach; ?>
+</div>
+
+<?php if ($apiKey === null): ?>
+
+    <p style="color:#888;">Bitte oben eine Umgebung und eine API auswählen.</p>
+
+<?php else: ?>
+
+    <?php $fullUrl = $config['environments'][$envKey]['base_url'] . $config['apis'][$apiKey]['path']; ?>
+
+    <div class="toolbar">
+        <a class="url" href="<?= htmlspecialchars($fullUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($fullUrl) ?></a>
+        <div style="display:flex; gap:8px; align-items:center;">
+            <form method="get">
+                <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
+                <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                <?php if ($totalFiltered > $pageSize || $fetchedCount > $pageSize): ?>
+                    <input type="text" name="q" placeholder="Suchen..." value="<?= htmlspecialchars($query) ?>">
+                    <button type="submit">Suchen</button>
+                <?php endif; ?>
+            </form>
+            <a class="refresh-btn" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['refresh' => 1])) ?>">Abfragen</a>
+        </div>
+    </div>
+
+    <?php if ($errorMessage !== null): ?>
+
+        <div class="error">Fehler beim Abrufen/Dekodieren: <?= htmlspecialchars($errorMessage) ?></div>
+
+    <?php else: ?>
+
+        <table>
+            <thead>
+                <tr>
+                    <?php foreach ($config['apis'][$apiKey]['columns'] as $col): ?>
+                        <th><?= htmlspecialchars($col['label']) ?></th>
+                    <?php endforeach; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                $columnCount = count($config['apis'][$apiKey]['columns']);
+                $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
+                ?>
+                <?php if (empty($pageEntries)): ?>
+                    <tr><td colspan="<?= $columnCount ?>" style="color:#888;">Keine Einträge gefunden.</td></tr>
+                <?php endif; ?>
+                <?php foreach ($pageEntries as $i => $entry): ?>
+                    <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
+                        <?php foreach ($config['apis'][$apiKey]['columns'] as $j => $col): ?>
+                            <td data-label="<?= htmlspecialchars($col['label']) ?>">
+                                <?php if ($isExpandable && $j === 0): ?>
+                                    <span class="caret">&#9656;</span>
+                                <?php endif; ?>
+                                <?php if ($col['type'] === 'multilang'): ?>
+                                    <?= formatMultilangCell($entry, $col['key']) ?>
+                                <?php elseif ($col['type'] === 'registry_ids'): ?>
+                                    <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
+                                <?php else: ?>
+                                    <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
+                                <?php endif; ?>
+                            </td>
+                        <?php endforeach; ?>
+                    </tr>
+                    <?php if ($isExpandable): ?>
+                        <tr class="detail-row">
+                            <td colspan="<?= $columnCount ?>"><?= renderEntryDetail($entry) ?></td>
+                        </tr>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+
+        <div class="pagination">
+            <?php if ($page > 0): ?>
+                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1)) ?>">&laquo; Zurück</a>
+            <?php else: ?>
+                <span class="disabled">&laquo; Zurück</span>
+            <?php endif; ?>
+
+            <span>Seite <?= $page + 1 ?> von <?= $totalPages ?></span>
+
+            <?php if ($page + 1 < $totalPages): ?>
+                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1)) ?>">Weiter &raquo;</a>
+            <?php else: ?>
+                <span class="disabled">Weiter &raquo;</span>
+            <?php endif; ?>
+        </div>
+
+        <p class="meta">
+            <?= $totalFiltered ?> Einträge<?= $query !== '' ? " (gefiltert aus $fetchedCount)" : '' ?>
+        </p>
+
+    <?php endif; ?>
+
+<?php endif; ?>
+
+<script>
+document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
+    row.addEventListener('click', function () {
+        var detail = row.nextElementSibling;
+        if (!detail || !detail.classList.contains('detail-row')) return;
+        var isOpen = detail.classList.toggle('open');
+        var caret = row.querySelector('.caret');
+        if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
+    });
+});
+</script>
+
+</body>
+</html>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Swiyu Trust Registry Explorer</title>
+<style>
+    body { font-family: Arial, sans-serif; margin: 2em; color: #222; background: #fafafa; }
+    h1 { font-size: 1.3em; margin-bottom: 1em; }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid #ccc; margin-bottom: 16px; }
+    .tabs a { padding: 8px 18px; font-size: 14px; text-decoration: none; color: #555; border-bottom: 3px solid transparent; }
+    .tabs a.active { color: #0b5fa5; border-bottom-color: #0b5fa5; font-weight: bold; }
+
+    .api-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .api-chips a { padding: 6px 14px; font-size: 13px; border-radius: 16px; border: 1px solid #ccc; text-decoration: none; color: #444; background: #fff; }
+    .api-chips a.active { background: #e6f1fb; border-color: #0b5fa5; color: #0b5fa5; font-weight: bold; }
+    .api-chips small { color: #888; margin-left: 4px; }
+
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .toolbar .url { font-family: monospace; font-size: 12px; color: #0b5fa5; word-break: break-all; text-decoration: none; }
+    .toolbar .url:hover { text-decoration: underline; }
+    .toolbar form { display: flex; gap: 6px; }
+    .toolbar input[type=text] { padding: 6px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; min-width: 220px; }
+    .toolbar button, .refresh-btn { padding: 6px 14px; font-size: 13px; border: 1px solid #0b5fa5; background: #0b5fa5; color: #fff; border-radius: 4px; cursor: pointer; text-decoration: none; }
+
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; }
+    th { background: #f2f2f2; }
+
+    tr.entry-row.expandable { cursor: pointer; }
+    tr.entry-row.expandable:hover { background: #f7fbff; }
+    tr.entry-row .caret { display: inline-block; width: 14px; color: #0b5fa5; }
+    tr.detail-row { display: none; background: #fbfcfe; }
+    tr.detail-row.open { display: table-row; }
+    tr.detail-row td { padding: 14px 20px; }
+    .detail-section { margin-bottom: 14px; }
+    .detail-section h4 { margin: 0 0 6px; font-size: 13px; color: #0b5fa5; }
+    table.detail-kv { width: 100%; border: none; background: transparent; }
+    table.detail-kv th { background: transparent; border: none; width: 220px; font-weight: normal; color: #666; font-size: 12px; vertical-align: top; padding: 3px 8px 3px 0; }
+    table.detail-kv td { border: none; padding: 3px 0; font-size: 12px; }
+    .detail-raw { color: #999; font-size: 11px; }
+    ul.detail-list { margin: 0; padding-left: 18px; font-size: 12px; }
+    .detail-empty { color: #999; }
 
     .pagination { margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
     .pagination a { text-decoration: none; color: #0b5fa5; }
