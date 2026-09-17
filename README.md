@@ -17,7 +17,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Screenshot
 
-<!-- Add screenshots here -->
+![Alternativtext](screenshot-home.png)
 
 ## Requirements
 
