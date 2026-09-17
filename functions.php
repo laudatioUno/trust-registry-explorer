@@ -376,3 +376,42 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
 
     return $cached['entries'];
 }
+
+/**
+ * Durchsucht alle konfigurierten APIs einer Umgebung nach einem Suchbegriff
+ * (typischerweise eine DID) und liefert pro API die gefundenen Einträge.
+ * Nutzt für jede API den bestehenden Session-Cache (kein Zwangs-Refresh),
+ * damit die Suche selbst keine 6 neuen API-Abrufe auslöst, wenn die Daten
+ * schon geladen sind.
+ *
+ * Rückgabe: [
+ *   'results' => [apiKey => ['entries' => [...], 'error' => string|null]],
+ *   'entity_name' => string|null,  // aus dem ersten idTS-Treffer, falls vorhanden
+ * ]
+ */
+function searchAcrossApis(string $envKey, string $baseUrl, array $apis, string $needle, int $ttl): array
+{
+    $results = [];
+    $entityName = null;
+
+    foreach ($apis as $apiKey => $apiCfg) {
+        try {
+            $entries = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, false, $ttl);
+            $matches = filterEntries($entries, $needle);
+            $results[$apiKey] = ['entries' => $matches, 'error' => null];
+
+            if ($apiKey === 'idTS' && $entityName === null) {
+                foreach ($matches as $match) {
+                    if (!empty($match['entity_name'])) {
+                        $entityName = (string) $match['entity_name'];
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable $e) {
+            $results[$apiKey] = ['entries' => [], 'error' => $e->getMessage()];
+        }
+    }
+
+    return ['results' => $results, 'entity_name' => $entityName];
+}
