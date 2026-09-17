@@ -20,10 +20,10 @@
 return [
 
     'environments' => [
-        'REF'  => ['label' => 'REF',  'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
-        'ABN'  => ['label' => 'ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch'],
+        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
+        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch'],
         'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch'],
-        'PROD' => ['label' => 'PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch'],
+        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch'],
         'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch'],
     ],
 
@@ -98,6 +98,21 @@ return [
                 ['key' => 'sub',               'label' => 'Verifier (DID)',         'type' => 'text'],
                 ['key' => 'iat',               'label' => 'Erstellt am',            'type' => 'unix'],
                 ['key' => 'authorized_fields', 'label' => 'Autorisierte Felder',    'type' => 'list'],
+            ],
+        ],
+
+        'idTS' => [
+            'label'       => 'idTS',
+            'description' => 'Identity Trust Statement',
+            'path'        => '/api/v2/identity-trust-statement',
+            'mode'        => 'paginated_jwt',
+            // Zeilen sind aufklappbar und zeigen dann alle im JWT vorhandenen
+            // Felder inkl. aller Sprachvarianten von entity_name.
+            'expandable'  => true,
+            'columns'     => [
+                ['key' => 'entity_name',    'label' => 'Entity Name',      'type' => 'text'],
+                ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
+                ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
             ],
         ],
 
