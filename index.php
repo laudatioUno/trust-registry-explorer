@@ -20,6 +20,20 @@ $query = trim((string) ($_GET['q'] ?? ''));
 $page  = max(0, (int) ($_GET['p'] ?? 0));
 $forceRefresh = isset($_GET['refresh']);
 
+// ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
+
+$didQuery = trim((string) ($_GET['did'] ?? ''));
+$didEnv   = $_GET['did_env'] ?? $envKey;
+if (!isset($config['environments'][$didEnv])) {
+    $didEnv = $envKey;
+}
+$didSearch = null; // ['results' => [...], 'entity_name' => ...] wenn eine Suche aktiv ist
+
+if ($didQuery !== '') {
+    $didBaseUrl = $config['environments'][$didEnv]['base_url'];
+    $didSearch  = searchAcrossApis($didEnv, $didBaseUrl, $config['apis'], $didQuery, $config['cache_ttl']);
+}
+
 /**
  * Baut eine URL zu dieser Seite mit den aktuellen Parametern, überschrieben
  * durch $overrides. Damit bleiben Umgebung/API/Suche beim Navigieren erhalten.
@@ -74,6 +88,30 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid #ccc; margin-bottom: 16px; }
     .tabs a { padding: 8px 18px; font-size: 14px; text-decoration: none; color: #555; border-bottom: 3px solid transparent; }
     .tabs a.active { color: #0b5fa5; border-bottom-color: #0b5fa5; font-weight: bold; }
+
+    .did-search { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+    .did-search form { display: flex; gap: 8px; }
+    .did-search input[type=text] { flex: 1; padding: 7px 10px; font-size: 12px; font-family: monospace; border: 1px solid #ccc; border-radius: 4px; }
+    .did-search select { padding: 7px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+    .did-search button { padding: 7px 16px; font-size: 13px; border: 1px solid #0b5fa5; background: #0b5fa5; color: #fff; border-radius: 4px; cursor: pointer; }
+    .did-search .hint { font-size: 11px; color: #999; margin: 6px 0 0; }
+
+    .did-entity { display: flex; align-items: center; gap: 10px; background: #eef6fd; border-radius: 6px; padding: 8px 12px; margin-top: 12px; }
+    .did-entity .lbl { font-size: 11px; color: #888; }
+    .did-entity .val { font-size: 14px; font-weight: bold; color: #0b5fa5; }
+
+    .did-results { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+    .did-card { background: #fbfdff; border: 1px solid #bcd8ee; border-radius: 8px; padding: 10px 14px; }
+    .did-card.no-hit { opacity: 0.55; border-color: #ddd; background: transparent; }
+    .did-card-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .did-card-head .name { font-weight: bold; font-size: 14px; }
+    .did-card-head .name small { font-weight: normal; color: #888; font-size: 12px; margin-left: 6px; }
+    .did-badge { background: #e6f1fb; color: #0b5fa5; font-size: 12px; padding: 2px 10px; border-radius: 10px; }
+    .did-card-body { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid #ddd; }
+    .did-card-body.open { display: block; }
+    .did-hit-label { font-size: 11px; color: #999; margin: 10px 0 4px; text-transform: uppercase; }
+    .did-hit-label:first-child { margin-top: 0; }
+    .did-error { color: #a12622; font-size: 12px; }
 
     .api-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
     .api-chips a { padding: 6px 14px; font-size: 13px; border-radius: 16px; border: 1px solid #ccc; text-decoration: none; color: #444; background: #fff; }
@@ -160,6 +198,81 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
 <body>
 
 <h1>Swiyu Trust Registry Explorer</h1>
+
+<div class="did-search">
+    <form method="get">
+        <?php foreach (['env' => $envKey, 'api' => $apiKey, 'q' => $query, 'p' => $page] as $k => $v): ?>
+            <?php if ($v !== null && $v !== ''): ?>
+                <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars((string) $v) ?>">
+            <?php endif; ?>
+        <?php endforeach; ?>
+        <input type="text" name="did" placeholder="DID durchsuchen (über alle APIs)..." value="<?= htmlspecialchars($didQuery) ?>">
+        <select name="did_env">
+            <?php foreach ($config['environments'] as $key => $env): ?>
+                <option value="<?= htmlspecialchars($key) ?>" <?= $key === $didEnv ? 'selected' : '' ?>><?= htmlspecialchars($env['label']) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit">Suchen</button>
+    </form>
+    <p class="hint">Durchsucht alle Trust Statements der gewählten Umgebung nach dem eingegebenen Begriff (z.B. eine DID).</p>
+
+    <?php if ($didSearch !== null): ?>
+        <?php if ($didSearch['entity_name'] !== null): ?>
+            <div class="did-entity">
+                <span class="lbl">Entität laut idTS</span>
+                <span class="val"><?= htmlspecialchars($didSearch['entity_name']) ?></span>
+            </div>
+        <?php endif; ?>
+
+        <div class="did-results">
+            <?php foreach ($config['apis'] as $apiKeyIter => $apiCfgIter):
+                $r = $didSearch['results'][$apiKeyIter] ?? ['entries' => [], 'error' => null];
+                $hitCount = count($r['entries']);
+            ?>
+                <?php if ($hitCount > 0 || $r['error'] !== null): ?>
+                    <div class="did-card">
+                        <div class="did-card-head" onclick="this.nextElementSibling.classList.toggle('open')">
+                            <span class="name"><?= htmlspecialchars($apiCfgIter['label']) ?> <small><?= htmlspecialchars($apiCfgIter['description']) ?></small></span>
+                            <?php if ($r['error'] !== null): ?>
+                                <span class="did-error">Fehler</span>
+                            <?php else: ?>
+                                <span class="did-badge"><?= $hitCount ?> Treffer</span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="did-card-body">
+                            <?php if ($r['error'] !== null): ?>
+                                <p class="did-error"><?= htmlspecialchars($r['error']) ?></p>
+                            <?php else: ?>
+                                <?php foreach ($r['entries'] as $i => $hit): ?>
+                                    <?php if ($hitCount > 1): ?><p class="did-hit-label">Treffer <?= $i + 1 ?></p><?php endif; ?>
+                                    <?= renderEntryDetail($hit) ?>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            <?php endforeach; ?>
+
+            <?php
+            $noHitLabels = [];
+            foreach ($config['apis'] as $apiKeyIter => $apiCfgIter) {
+                $r = $didSearch['results'][$apiKeyIter] ?? ['entries' => [], 'error' => null];
+                if ($r['error'] === null && count($r['entries']) === 0) {
+                    $noHitLabels[] = $apiCfgIter['label'];
+                }
+            }
+            ?>
+            <?php if ($noHitLabels !== []): ?>
+                <div class="did-card no-hit">
+                    <div class="did-card-head">
+                        <span class="name"><?= htmlspecialchars(implode(', ', $noHitLabels)) ?></span>
+                        <span class="did-badge" style="background:transparent;color:#999;">0 Treffer</span>
+                    </div>
+                </div>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+</div>
 
 <div class="tabs">
     <?php foreach ($config['environments'] as $key => $env): ?>
