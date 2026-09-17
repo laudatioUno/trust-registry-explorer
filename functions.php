@@ -157,10 +157,12 @@ function formatCellValue(mixed $value, string $type): string
         return '-';
     }
     return match ($type) {
-        'unix' => htmlspecialchars(formatUnixTimestamp($value)),
-        'iso'  => htmlspecialchars(formatIsoTimestamp($value)),
-        'list' => is_array($value) ? htmlspecialchars(implode(', ', $value)) : htmlspecialchars((string) $value),
-        default => htmlspecialchars(is_scalar($value) ? (string) $value : json_encode($value)),
+        'unix'     => htmlspecialchars(formatUnixTimestamp($value)),
+        'iso'      => htmlspecialchars(formatIsoTimestamp($value)),
+        'list'     => is_array($value) ? htmlspecialchars(implode(', ', $value)) : htmlspecialchars((string) $value),
+        // Zeigt einen PHP-Bool literal als "true"/"false" (keine Übersetzung, 1:1 wie im JWT).
+        'raw_bool' => is_bool($value) ? ($value ? 'true' : 'false') : htmlspecialchars((string) $value),
+        default    => htmlspecialchars(is_scalar($value) ? (string) $value : json_encode($value)),
     };
 }
 
@@ -201,6 +203,29 @@ function formatMultilangCell(array $entry, string $prefix): string
 }
 
 /**
+ * Rendert eine "registry_ids"-Zelle: Liste von {type, value}-Objekten,
+ * eine Zeile pro Eintrag ("TYPE: Wert"). Ein leerer Wert wird explizit
+ * als "(leer)" markiert statt eine leere Zelle zu zeigen.
+ */
+function formatRegistryIdsCell(mixed $value): string
+{
+    if (!is_array($value) || $value === []) {
+        return '-';
+    }
+    $lines = [];
+    foreach ($value as $item) {
+        if (!is_array($item)) {
+            continue;
+        }
+        $type = $item['type'] ?? '?';
+        $val  = $item['value'] ?? null;
+        $rendered = ($val === '') ? '<span class="value-empty">(leer)</span>' : htmlspecialchars((string) $val);
+        $lines[] = htmlspecialchars((string) $type) . ': ' . $rendered;
+    }
+    return $lines !== [] ? implode('<br>', $lines) : '-';
+}
+
+/**
  * Prüft, ob ein Array assoziativ ist (vs. einer sequentiellen Liste entspricht).
  */
 function isAssocArray(array $arr): bool
@@ -209,14 +234,39 @@ function isAssocArray(array $arr): bool
 }
 
 /**
+ * Rendert einen einzelnen skalaren Wert für die Detailansicht:
+ * - Bool literal als "true"/"false" (keine Übersetzung)
+ * - Leerer String explizit als "(leer)" markiert (unterscheidet sich von
+ *   einem komplett fehlenden Feld, das gar nicht erst als Zeile auftaucht)
+ * - Alles andere normal escaped
+ */
+function renderDetailScalar(mixed $value): string
+{
+    if (is_bool($value)) {
+        return $value ? 'true' : 'false';
+    }
+    if ($value === '') {
+        return '<span class="value-empty">(leer)</span>';
+    }
+    if ($value === null) {
+        return '-';
+    }
+    return htmlspecialchars((string) $value);
+}
+
+/**
  * Rendert einen beliebig verschachtelten Payload/Header rekursiv als
  * übersichtliche Schlüssel/Wert-Struktur für die Detailansicht.
  * Bekannte Zeitstempel-Felder (nbf/exp/iat) werden zusätzlich lesbar formatiert.
+ * Felder, die bei einem Eintrag komplett fehlen, tauchen hier gar nicht erst
+ * auf (nur tatsächlich vorhandene Schlüssel werden iteriert) — das macht auf
+ * einen Blick sichtbar, welche Sprachvarianten/Felder bei welchem Eintrag
+ * überhaupt existieren.
  */
 function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']): string
 {
     if (!is_array($data)) {
-        return htmlspecialchars((string) ($data ?? '-'));
+        return renderDetailScalar($data);
     }
 
     if ($data === [] ) {
@@ -237,7 +287,7 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
             } elseif (is_array($value)) {
                 $rendered = renderDetailTree($value, $dateKeys);
             } else {
-                $rendered = htmlspecialchars((string) ($value ?? '-'));
+                $rendered = renderDetailScalar($value);
             }
 
             $html .= "<tr><th>{$label}</th><td>{$rendered}</td></tr>";
@@ -248,7 +298,7 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
 
     $html = '<ul class="detail-list">';
     foreach ($data as $value) {
-        $html .= '<li>' . (is_array($value) ? renderDetailTree($value, $dateKeys) : htmlspecialchars((string) $value)) . '</li>';
+        $html .= '<li>' . (is_array($value) ? renderDetailTree($value, $dateKeys) : renderDetailScalar($value)) . '</li>';
     }
     $html .= '</ul>';
     return $html;

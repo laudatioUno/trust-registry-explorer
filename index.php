@@ -105,6 +105,7 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
     .detail-raw { color: #999; font-size: 11px; }
     ul.detail-list { margin: 0; padding-left: 18px; font-size: 12px; }
     .detail-empty { color: #999; }
+    .value-empty { color: #b06a00; font-style: italic; }
 
     .pagination { margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
     .pagination a { text-decoration: none; color: #0b5fa5; }
@@ -231,6 +232,8 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
                                 <?php endif; ?>
                                 <?php if ($col['type'] === 'multilang'): ?>
                                     <?= formatMultilangCell($entry, $col['key']) ?>
+                                <?php elseif ($col['type'] === 'registry_ids'): ?>
+                                    <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
