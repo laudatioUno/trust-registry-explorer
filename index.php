@@ -20,6 +20,15 @@ $query = trim((string) ($_GET['q'] ?? ''));
 $page  = max(0, (int) ($_GET['p'] ?? 0));
 $forceRefresh = isset($_GET['refresh']);
 
+// Seitengrösse: wählbar (20/50/100/200), fällt aber bei jeder Navigation, die
+// diesen Wert nicht explizit mitgibt (z.B. Umgebungs-/API-Wechsel), auf den
+// Standardwert aus config.php zurück — kein dauerhaftes Merken gewünscht.
+$pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
+$perPage = (int) ($_GET['per_page'] ?? $config['page_size']);
+if (!in_array($perPage, $pageSizeOptions, true)) {
+    $perPage = $config['page_size'];
+}
+
 // ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
 
 $didQuery = trim((string) ($_GET['did'] ?? ''));
@@ -37,6 +46,9 @@ if ($didQuery !== '') {
 /**
  * Baut eine URL zu dieser Seite mit den aktuellen Parametern, überschrieben
  * durch $overrides. Damit bleiben Umgebung/API/Suche beim Navigieren erhalten.
+ * per_page wird NUR übernommen, wenn es explizit in $overrides steht (z.B. für
+ * die Pagination-Links) — beim Umgebungs-/API-Wechsel via Tabs/Chips fällt die
+ * Seitengrösse absichtlich auf den Standardwert zurück.
  */
 function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, array $overrides = []): string
 {
@@ -68,11 +80,19 @@ if ($apiKey !== null) {
     }
 }
 
-$pageSize = $config['page_size'];
+$pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
 $totalFiltered = count($entries);
-$totalPages = max(1, (int) ceil($totalFiltered / $pageSize));
-$page = min($page, $totalPages - 1);
-$pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
+$showPagination = $totalFiltered > $pageSize;
+
+if ($showPagination) {
+    $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
+    $page = min($page, $totalPages - 1);
+    $pageEntries = array_slice($entries, $page * $perPage, $perPage);
+} else {
+    $totalPages = 1;
+    $page = 0;
+    $pageEntries = $entries; // alles auf einer Seite
+}
 
 ?>
 <!DOCTYPE html>
@@ -145,9 +165,15 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
     .detail-empty { color: #999; }
     .value-empty { color: #b06a00; font-style: italic; }
 
-    .pagination { margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #555; }
-    .pagination a { text-decoration: none; color: #0b5fa5; }
-    .pagination a.disabled { color: #bbb; pointer-events: none; }
+    .pagination { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 13px; color: #555; flex-wrap: wrap; }
+    .pagination form { display: flex; align-items: center; gap: 6px; }
+    .pagination select, .pagination input[type=text] { padding: 4px 6px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; }
+    .page-numbers { display: flex; align-items: center; gap: 2px; }
+    .page-numbers a, .page-numbers span.page-num, .page-numbers span.disabled { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 4px; text-decoration: none; color: #0b5fa5; border-radius: 4px; }
+    .page-numbers a:hover { background: #eef6fd; }
+    .page-numbers span.current { background: #0b5fa5; color: #fff; font-weight: bold; }
+    .page-numbers span.disabled { color: #ccc; }
+    .page-numbers span.ellipsis { color: #999; padding: 0 2px; }
 
     .error { background: #fdecea; border: 1px solid #f5c2c0; color: #a12622; padding: 12px; border-radius: 6px; }
     .meta { font-size: 12px; color: #888; margin-top: 8px; }
@@ -191,7 +217,9 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
 
         table.detail-kv th { width: 40%; }
 
-        .pagination { justify-content: space-between; }
+        .pagination { justify-content: center; }
+        .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
+        .page-numbers { gap: 10px; }
     }
 </style>
 </head>
@@ -305,12 +333,15 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
             <form method="get">
                 <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                 <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                <?php if ($perPage !== $config['page_size']): ?>
+                    <input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>">
+                <?php endif; ?>
                 <?php if ($totalFiltered > $pageSize || $fetchedCount > $pageSize): ?>
                     <input type="text" name="q" placeholder="Suchen..." value="<?= htmlspecialchars($query) ?>">
                     <button type="submit">Suchen</button>
                 <?php endif; ?>
             </form>
-            <a class="refresh-btn" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['refresh' => 1])) ?>">Abfragen</a>
+            <a class="refresh-btn" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Abfragen</a>
         </div>
     </div>
 
@@ -363,23 +394,66 @@ $pageEntries = array_slice($entries, $page * $pageSize, $pageSize);
         </table>
 
         <div class="pagination">
-            <?php if ($page > 0): ?>
-                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1)) ?>">&laquo; Zurück</a>
-            <?php else: ?>
-                <span class="disabled">&laquo; Zurück</span>
-            <?php endif; ?>
+            <?php if ($showPagination): ?>
+                <form method="get" class="page-size-form">
+                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
+                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
+                    <input type="hidden" name="p" value="0">
+                    <label>Pro Seite
+                        <select name="per_page" onchange="this.form.submit()">
+                            <?php foreach ($pageSizeOptions as $opt): ?>
+                                <option value="<?= $opt ?>" <?= $opt === $perPage ? 'selected' : '' ?>><?= $opt ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
 
-            <span>Seite <?= $page + 1 ?> von <?= $totalPages ?></span>
+                <div class="page-numbers">
+                    <?php if ($page > 0): ?>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage])) ?>" title="Erste Seite">&laquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage])) ?>" title="Vorherige Seite">&lsaquo;</a>
+                    <?php else: ?>
+                        <span class="disabled nav-edge">&laquo;</span>
+                        <span class="disabled nav-step">&lsaquo;</span>
+                    <?php endif; ?>
 
-            <?php if ($page + 1 < $totalPages): ?>
-                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1)) ?>">Weiter &raquo;</a>
-            <?php else: ?>
-                <span class="disabled">Weiter &raquo;</span>
+                    <?php foreach (paginationRange($page + 1, $totalPages) as $item): ?>
+                        <?php if ($item === '…'): ?>
+                            <span class="ellipsis">…</span>
+                        <?php elseif ($item === $page + 1): ?>
+                            <span class="page-num current"><?= $item ?></span>
+                        <?php else: ?>
+                            <a class="page-num" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $item - 1, ['per_page' => $perPage])) ?>"><?= $item ?></a>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+
+                    <?php if ($page + 1 < $totalPages): ?>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage])) ?>" title="Nächste Seite">&rsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage])) ?>" title="Letzte Seite">&raquo;</a>
+                    <?php else: ?>
+                        <span class="disabled nav-step">&rsaquo;</span>
+                        <span class="disabled nav-edge">&raquo;</span>
+                    <?php endif; ?>
+                </div>
+
+                <form method="get" class="page-jump-form" onsubmit="var i=this.querySelector('input[name=p]'); var v=parseInt(i.value,10); i.value = isNaN(v) ? 0 : Math.max(0, v - 1);">
+                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
+                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
+                    <?php if ($perPage !== $config['page_size']): ?><input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>"><?php endif; ?>
+                    <span>Seite</span>
+                    <input type="text" inputmode="numeric" name="p" value="<?= $page + 1 ?>" style="width:44px; text-align:center;">
+                    <span>von <?= $totalPages ?></span>
+                </form>
             <?php endif; ?>
         </div>
 
         <p class="meta">
             <?= $totalFiltered ?> Einträge<?= $query !== '' ? " (gefiltert aus $fetchedCount)" : '' ?>
+            <?php if ($showPagination): ?>
+                &middot; zeige <?= $page * $perPage + 1 ?>–<?= min($totalFiltered, ($page + 1) * $perPage) ?>
+            <?php endif; ?>
         </p>
 
     <?php endif; ?>
