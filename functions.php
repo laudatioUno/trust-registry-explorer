@@ -378,6 +378,41 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
 }
 
 /**
+ * Berechnet eine kompakte Liste von Seitenzahlen für die Pagination-Leiste,
+ * mit "…"-Platzhaltern für ausgelassene Bereiche. $current und $total sind
+ * 1-basiert (Seite 1 = erste Seite). Beispiel bei current=5, total=7:
+ * [1, '…', 4, 5, 6, '…', 7] (aktuelle Seite ± 1 sichtbar, Rand immer sichtbar).
+ *
+ * @return array<int|string>
+ */
+function paginationRange(int $current, int $total): array
+{
+    if ($total <= 1) {
+        return [1];
+    }
+
+    $delta = 1;
+    $left  = max(1, $current - $delta);
+    $right = min($total, $current + $delta);
+
+    $range = [1];
+    if ($left > 2) {
+        $range[] = '…';
+    }
+    for ($i = $left; $i <= $right; $i++) {
+        if ($i !== 1 && $i !== $total) {
+            $range[] = $i;
+        }
+    }
+    if ($right < $total - 1) {
+        $range[] = '…';
+    }
+    $range[] = $total;
+
+    return $range;
+}
+
+/**
  * Durchsucht alle konfigurierten APIs einer Umgebung nach einem Suchbegriff
  * (typischerweise eine DID) und liefert pro API die gefundenen Einträge.
  * Nutzt für jede API den bestehenden Session-Cache (kein Zwangs-Refresh),

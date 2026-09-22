@@ -118,8 +118,12 @@ return [
 
     ],
 
-    // Anzahl Einträge pro angezeigter Seite (nach Suche/Filterung)
+    // Anzahl Einträge pro angezeigter Seite (nach Suche/Filterung) — Startwert,
+    // wird bei jedem Umgebungs-/API-Wechsel wieder auf diesen Wert zurückgesetzt.
     'page_size' => 20,
+
+    // Zur Auswahl stehende Seitengrössen (Dropdown in der Pagination-Leiste)
+    'page_size_options' => [20, 50, 100, 200],
 
     // Wie lange der Session-Cache pro Umgebung+API gültig ist, bevor
     // ohne expliziten "Abfragen"-Klick automatisch neu geladen wird (Sekunden)
