@@ -66,13 +66,16 @@ function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, arr
 $errorMessage = null;
 $entries = [];
 $fetchedCount = 0;
+$listMeta = null;
 
 if ($apiKey !== null) {
     $apiCfg = $config['apis'][$apiKey];
     $baseUrl = $config['environments'][$envKey]['base_url'];
 
     try {
-        $entries = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl']);
+        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl']);
+        $entries = $fetched['entries'];
+        $listMeta = $fetched['list_meta'];
         $fetchedCount = count($entries);
         $entries = filterEntries($entries, $query);
     } catch (Throwable $e) {
@@ -178,6 +181,19 @@ if ($showPagination) {
     .error { background: #fdecea; border: 1px solid #f5c2c0; color: #a12622; padding: 12px; border-radius: 6px; }
     .meta { font-size: 12px; color: #888; margin-top: 8px; }
 
+    .list-meta-panel { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+    .list-meta-panel .hint { font-size: 11px; color: #999; margin: 0 0 10px; }
+    .list-meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .list-meta-tile { background: #f7f9fb; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+    .list-meta-tile .lbl { font-size: 11px; color: #888; }
+    .list-meta-tile .val { font-size: 13px; font-weight: bold; color: #222; }
+    .status-badge { display: inline-block; font-size: 12px; font-weight: bold; padding: 2px 10px; border-radius: 10px; }
+    .status-badge.status-valid { background: #e2f3e6; color: #1e7d34; }
+    .status-badge.status-revoked { background: #fdecea; color: #a12622; }
+    .status-badge.status-suspended { background: #fdf3e2; color: #a1651f; }
+    .status-badge.status-unknown { background: #eee; color: #666; }
+    .list-meta-error { font-size: 11px; color: #a12622; margin: 8px 0 0; }
+
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
         body { margin: 0.75em; }
@@ -216,6 +232,8 @@ if ($showPagination) {
         tr.detail-row td { padding: 12px 14px; background: #fbfcfe; border: 1px solid #ddd; border-top: none; border-radius: 0 0 10px 10px; }
 
         table.detail-kv th { width: 40%; }
+
+        .list-meta-grid { grid-template-columns: repeat(2, 1fr); }
 
         .pagination { justify-content: center; }
         .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
@@ -344,6 +362,43 @@ if ($showPagination) {
             <a class="refresh-btn" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Abfragen</a>
         </div>
     </div>
+
+    <?php if ($listMeta !== null): ?>
+        <div class="list-meta-panel">
+            <p class="hint">Gültigkeit dieser Trust-List (gilt für die gesamte Liste)</p>
+            <div class="list-meta-grid">
+                <div class="list-meta-tile">
+                    <span class="lbl">Gültig ab (nbf)</span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['nbf'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl">Gültig bis (exp)</span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['exp'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl">Erstellt am (iat)</span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl">Status</span>
+                    <?php
+                        $statusClass = match ($listMeta['status_value']) {
+                            0 => 'status-valid',
+                            1 => 'status-revoked',
+                            2 => 'status-suspended',
+                            default => 'status-unknown',
+                        };
+                    ?>
+                    <span class="val">
+                        <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars($listMeta['status_label']) ?></span>
+                    </span>
+                </div>
+            </div>
+            <?php if ($listMeta['status_error'] !== null): ?>
+                <p class="list-meta-error">Status nicht abrufbar (<?= htmlspecialchars($listMeta['status_error']) ?>)</p>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
 
     <?php if ($errorMessage !== null): ?>
 

@@ -35,6 +35,9 @@ return [
             'path'        => '/api/v2/non-compliance-trust-list',
             'mode'        => 'single_jwt_list',
             'list_field'  => 'non_compliant_actors',
+            // nbf/exp/iat + aufgelöster Status gelten hier für die GESAMTE Liste
+            // (ein JWT, eine Statusliste) — werden oberhalb der Tabelle angezeigt.
+            'list_meta'   => true,
             'columns'     => [
                 ['key' => 'actor',        'label' => 'Actor (DID)',  'type' => 'text'],
                 ['key' => 'flagged_at',   'label' => 'Geflaggt am',  'type' => 'iso'],
