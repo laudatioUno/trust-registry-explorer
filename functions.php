@@ -57,8 +57,65 @@ function httpGet(string $url): string
 }
 
 /**
- * Holt ALLE Einträge einer API (über alle Seiten hinweg, falls paginiert)
- * und gibt sie als flaches Array dekodierter Payloads/Items zurück.
+ * Löst eine Token-Status-List-Referenz (uri + idx, gemäss IETF
+ * draft-ietf-oauth-status-list) zu einem konkreten Status-Wert auf:
+ * ruft die Status-List-JWT ab, entpackt das komprimierte Bit-Array (lst)
+ * und liest den Wert an Position idx (bitweise, gemäss "bits"-Feld) aus.
+ *
+ * @return array{status: int|null, label: string, error: string|null}
+ */
+function resolveTrustListStatus(?string $uri, mixed $idx): array
+{
+    static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
+
+    if ($uri === null || $idx === null) {
+        return ['status' => null, 'label' => '-', 'error' => null];
+    }
+
+    try {
+        $raw = httpGet($uri);
+        $decoded = decodeJwt($raw);
+        $statusList = $decoded['payload']['status_list'] ?? null;
+
+        if (!is_array($statusList) || !isset($statusList['lst'])) {
+            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'status_list-Feld fehlt in der Antwort'];
+        }
+
+        $bits = (int) ($statusList['bits'] ?? 1);
+        $compressed = base64UrlDecode((string) $statusList['lst']);
+        $bytes = @gzuncompress($compressed);
+
+        if ($bytes === false) {
+            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Statusliste konnte nicht entpackt werden'];
+        }
+
+        $bitOffset = (int) $idx * $bits;
+        $byteIndex = intdiv($bitOffset, 8);
+        $bitShift  = $bitOffset % 8;
+
+        if (!isset($bytes[$byteIndex])) {
+            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Index ausserhalb der Statusliste'];
+        }
+
+        $mask  = (1 << $bits) - 1;
+        $value = (ord($bytes[$byteIndex]) >> $bitShift) & $mask;
+        $label = $labels[$value] ?? ($value . ' (Unknown Status)');
+
+        return ['status' => $value, 'label' => $label, 'error' => null];
+    } catch (Throwable $e) {
+        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Holt ALLE Einträge einer API (über alle Seiten hinweg, falls paginiert).
+ *
+ * @return array{entries: array, list_meta: array|null} list_meta enthält
+ *   bei APIs mit dem Config-Flag 'list_meta' (aktuell nur ncTLS) die für die
+ *   GESAMTE Liste geltenden Angaben (nbf/exp/iat + aufgelöster Status) —
+ *   sonst null. Bewusst nicht generisch für alle single_jwt_list-APIs, da
+ *   andere APIs (z.B. Statement-Listen mit Status pro Zeile) später anders
+ *   behandelt werden.
  */
 function fetchAllEntries(string $baseUrl, array $apiCfg): array
 {
@@ -67,13 +124,31 @@ function fetchAllEntries(string $baseUrl, array $apiCfg): array
     if ($apiCfg['mode'] === 'single_jwt_list') {
         $raw = httpGet($url);
         $decoded = decodeJwt($raw);
-        $listRaw = $decoded['payload'][$apiCfg['list_field']] ?? [];
+        $payload = $decoded['payload'];
+        $listRaw = $payload[$apiCfg['list_field']] ?? [];
 
         $entries = [];
         foreach ($listRaw as $item) {
             $entries[] = !empty($apiCfg['scalar_list']) ? ['value' => $item] : $item;
         }
-        return $entries;
+
+        $listMeta = null;
+        if (!empty($apiCfg['list_meta'])) {
+            $statusUri = $payload['status']['status_list']['uri'] ?? null;
+            $statusIdx = $payload['status']['status_list']['idx'] ?? null;
+            $status = resolveTrustListStatus($statusUri, $statusIdx);
+
+            $listMeta = [
+                'nbf'          => $payload['nbf'] ?? null,
+                'exp'          => $payload['exp'] ?? null,
+                'iat'          => $payload['iat'] ?? null,
+                'status_value' => $status['status'],
+                'status_label' => $status['label'],
+                'status_error' => $status['error'],
+            ];
+        }
+
+        return ['entries' => $entries, 'list_meta' => $listMeta];
     }
 
     if ($apiCfg['mode'] === 'paginated_jwt') {
@@ -98,7 +173,7 @@ function fetchAllEntries(string $baseUrl, array $apiCfg): array
             $page++;
         } while ($page < $totalPages);
 
-        return $entries;
+        return ['entries' => $entries, 'list_meta' => null];
     }
 
     throw new RuntimeException("Unbekannter API-Modus: {$apiCfg['mode']}");
@@ -351,8 +426,10 @@ function filterEntries(array $entries, string $query): array
 }
 
 /**
- * Holt die Einträge für Umgebung+API, nutzt einen Session-Cache und
- * erzwingt bei $forceRefresh einen frischen API-Abruf.
+ * Holt die Einträge (+ ggf. list_meta) für Umgebung+API, nutzt einen
+ * Session-Cache und erzwingt bei $forceRefresh einen frischen API-Abruf.
+ *
+ * @return array{entries: array, list_meta: array|null}
  */
 function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array $apiCfg, bool $forceRefresh, int $ttl): array
 {
@@ -366,15 +443,16 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
     $isStale = $cached === null || (time() - $cached['fetched_at']) > $ttl;
 
     if ($forceRefresh || $isStale) {
-        $entries = fetchAllEntries($baseUrl, $apiCfg);
+        $result = fetchAllEntries($baseUrl, $apiCfg);
         $_SESSION['trust_explorer_cache'][$cacheKey] = [
-            'entries'    => $entries,
+            'entries'    => $result['entries'],
+            'list_meta'  => $result['list_meta'],
             'fetched_at' => time(),
         ];
-        return $entries;
+        return $result;
     }
 
-    return $cached['entries'];
+    return ['entries' => $cached['entries'], 'list_meta' => $cached['list_meta'] ?? null];
 }
 
 /**
@@ -431,8 +509,8 @@ function searchAcrossApis(string $envKey, string $baseUrl, array $apis, string $
 
     foreach ($apis as $apiKey => $apiCfg) {
         try {
-            $entries = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, false, $ttl);
-            $matches = filterEntries($entries, $needle);
+            $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, false, $ttl);
+            $matches = filterEntries($fetched['entries'], $needle);
             $results[$apiKey] = ['entries' => $matches, 'error' => null];
 
             if ($apiKey === 'idTS' && $entityName === null) {
