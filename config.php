@@ -55,6 +55,9 @@ return [
             'path'        => '/api/v2/protected-issuance-trust-list',
             'mode'        => 'single_jwt_list',
             'list_field'  => 'vct_values',
+            // nbf/exp/iat + aufgelöster Status gelten für die GESAMTE Liste,
+            // gleiches Panel-Design wie bei ncTLS.
+            'list_meta'   => true,
             'scalar_list' => true,
             'columns'     => [
                 ['key' => 'value', 'label' => 'VCT-Wert', 'type' => 'text'],
