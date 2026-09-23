@@ -29,6 +29,25 @@ return [
 
     'apis' => [
 
+        'idTS' => [
+            'label'       => 'idTS',
+            'description' => 'Identity Trust Statement',
+            'path'        => '/api/v2/identity-trust-statement',
+            'mode'        => 'paginated_jwt',
+            // Zeilen sind aufklappbar und zeigen dann alle im JWT vorhandenen
+            // Felder inkl. aller Sprachvarianten von entity_name.
+            'expandable'  => true,
+            // Hier hat JEDE Zeile ihre eigene Status-List-Referenz (anders als
+            // list_meta bei ncTLS/piTLS, wo es nur eine für die ganze Liste gibt).
+            'row_status'  => true,
+            'columns'     => [
+                ['key' => 'entity_name',    'label' => 'Entity Name',      'type' => 'text'],
+                ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
+                ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
+                ['key' => '_status_value',  'label' => 'Status',           'type' => 'status_badge'],
+            ],
+        ],
+
         'ncTLS' => [
             'label'       => 'ncTLS',
             'description' => 'Non-Compliance Trust List',
@@ -104,21 +123,6 @@ return [
                 ['key' => 'sub',               'label' => 'Verifier (DID)',         'type' => 'text'],
                 ['key' => 'iat',               'label' => 'Erstellt am',            'type' => 'unix'],
                 ['key' => 'authorized_fields', 'label' => 'Autorisierte Felder',    'type' => 'list'],
-            ],
-        ],
-
-        'idTS' => [
-            'label'       => 'idTS',
-            'description' => 'Identity Trust Statement',
-            'path'        => '/api/v2/identity-trust-statement',
-            'mode'        => 'paginated_jwt',
-            // Zeilen sind aufklappbar und zeigen dann alle im JWT vorhandenen
-            // Felder inkl. aller Sprachvarianten von entity_name.
-            'expandable'  => true,
-            'columns'     => [
-                ['key' => 'entity_name',    'label' => 'Entity Name',      'type' => 'text'],
-                ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
-                ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
             ],
         ],
 
