@@ -57,28 +57,22 @@ function httpGet(string $url): string
 }
 
 /**
- * Löst eine Token-Status-List-Referenz (uri + idx, gemäss IETF
- * draft-ietf-oauth-status-list) zu einem konkreten Status-Wert auf:
- * ruft die Status-List-JWT ab, entpackt das komprimierte Bit-Array (lst)
- * und liest den Wert an Position idx (bitweise, gemäss "bits"-Feld) aus.
+ * Ruft eine Token-Status-List-JWT ab und entpackt ihr komprimiertes
+ * Bit-Array (gemäss IETF draft-ietf-oauth-status-list). Liefert die
+ * Rohbytes + Bitbreite, damit daraus für einen beliebigen Index der
+ * Statuswert gelesen werden kann, ohne pro Index neu abzurufen.
  *
- * @return array{status: int|null, label: string, error: string|null}
+ * @return array{bytes: string|null, bits: int|null, error: string|null}
  */
-function resolveTrustListStatus(?string $uri, mixed $idx): array
+function fetchStatusListBytes(string $uri): array
 {
-    static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
-
-    if ($uri === null || $idx === null) {
-        return ['status' => null, 'label' => '-', 'error' => null];
-    }
-
     try {
         $raw = httpGet($uri);
         $decoded = decodeJwt($raw);
         $statusList = $decoded['payload']['status_list'] ?? null;
 
         if (!is_array($statusList) || !isset($statusList['lst'])) {
-            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'status_list-Feld fehlt in der Antwort'];
+            return ['bytes' => null, 'bits' => null, 'error' => 'status_list-Feld fehlt in der Antwort'];
         }
 
         $bits = (int) ($statusList['bits'] ?? 1);
@@ -86,25 +80,123 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
         $bytes = @gzuncompress($compressed);
 
         if ($bytes === false) {
-            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Statusliste konnte nicht entpackt werden'];
+            return ['bytes' => null, 'bits' => null, 'error' => 'Statusliste konnte nicht entpackt werden'];
         }
 
-        $bitOffset = (int) $idx * $bits;
-        $byteIndex = intdiv($bitOffset, 8);
-        $bitShift  = $bitOffset % 8;
-
-        if (!isset($bytes[$byteIndex])) {
-            return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Index ausserhalb der Statusliste'];
-        }
-
-        $mask  = (1 << $bits) - 1;
-        $value = (ord($bytes[$byteIndex]) >> $bitShift) & $mask;
-        $label = $labels[$value] ?? ($value . ' (Unknown Status)');
-
-        return ['status' => $value, 'label' => $label, 'error' => null];
+        return ['bytes' => $bytes, 'bits' => $bits, 'error' => null];
     } catch (Throwable $e) {
-        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => $e->getMessage()];
+        return ['bytes' => null, 'bits' => null, 'error' => $e->getMessage()];
     }
+}
+
+/**
+ * Liest den Statuswert an Position $idx aus den entpackten Statuslisten-
+ * Bytes (bitweise, gemäss $bits pro Eintrag). null, wenn $idx ausserhalb
+ * der verfügbaren Bytes liegt.
+ */
+function extractStatusBit(string $bytes, int $bits, int $idx): ?int
+{
+    $bitOffset = $idx * $bits;
+    $byteIndex = intdiv($bitOffset, 8);
+    $bitShift  = $bitOffset % 8;
+
+    if (!isset($bytes[$byteIndex])) {
+        return null;
+    }
+
+    $mask = (1 << $bits) - 1;
+    return (ord($bytes[$byteIndex]) >> $bitShift) & $mask;
+}
+
+/**
+ * Übersetzt einen rohen Statuswert (0/1/2) in das lesbare Label.
+ * Unbekannte Werte werden als "<Wert> (Unknown Status)" dargestellt.
+ */
+function statusLabel(?int $value): string
+{
+    static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
+
+    if ($value === null) {
+        return 'nicht abrufbar';
+    }
+    return $labels[$value] ?? ($value . ' (Unknown Status)');
+}
+
+/**
+ * Löst eine einzelne Token-Status-List-Referenz (uri + idx) zu einem
+ * konkreten Status-Wert auf. Für LISTEN-WEITE Status (ncTLS/piTLS) gedacht,
+ * wo es pro API nur eine einzige Referenz gibt.
+ *
+ * @return array{status: int|null, label: string, error: string|null}
+ */
+function resolveTrustListStatus(?string $uri, mixed $idx): array
+{
+    if ($uri === null || $idx === null) {
+        return ['status' => null, 'label' => '-', 'error' => null];
+    }
+
+    $fetched = fetchStatusListBytes($uri);
+    if ($fetched['error'] !== null) {
+        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => $fetched['error']];
+    }
+
+    $value = extractStatusBit($fetched['bytes'], $fetched['bits'], (int) $idx);
+    if ($value === null) {
+        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Index ausserhalb der Statusliste'];
+    }
+
+    return ['status' => $value, 'label' => statusLabel($value), 'error' => null];
+}
+
+/**
+ * Löst den Status für JEDEN Eintrag einzeln auf (z.B. idTS: jede Zeile hat
+ * eine eigene status.status_list.{uri,idx}-Referenz — jeder Eintrag hat
+ * dabei seinen EIGENEN Index, auch wenn mehrere Einträge auf dieselbe
+ * Statuslisten-URI verweisen). Um das effizient zu halten, wird jede
+ * vorkommende URI nur EINMAL abgerufen/entpackt, unabhängig davon, wie
+ * viele Einträge darauf verweisen — der jeweilige Index wird danach pro
+ * Eintrag individuell aus denselben Bytes gelesen.
+ *
+ * Ergänzt an jedem Eintrag: '_status_value', '_status_label', '_status_error'.
+ */
+function attachRowStatuses(array $entries): array
+{
+    $bytesCache = []; // uri => ['bytes'=>..., 'bits'=>..., 'error'=>...]
+
+    foreach ($entries as $entry) {
+        $uri = $entry['status']['status_list']['uri'] ?? null;
+        if ($uri !== null && !isset($bytesCache[$uri])) {
+            $bytesCache[$uri] = fetchStatusListBytes($uri);
+        }
+    }
+
+    foreach ($entries as &$entry) {
+        $uri = $entry['status']['status_list']['uri'] ?? null;
+        $idx = $entry['status']['status_list']['idx'] ?? null;
+
+        if ($uri === null || $idx === null) {
+            $entry['_status_value'] = null;
+            $entry['_status_label'] = '-';
+            $entry['_status_error'] = null;
+            continue;
+        }
+
+        $cached = $bytesCache[$uri];
+        if ($cached['error'] !== null) {
+            $entry['_status_value'] = null;
+            $entry['_status_label'] = 'nicht abrufbar';
+            $entry['_status_error'] = $cached['error'];
+            continue;
+        }
+
+        $value = extractStatusBit($cached['bytes'], $cached['bits'], (int) $idx);
+        $entry['_status_value'] = $value;
+        $entry['_status_label'] = $value === null ? 'nicht abrufbar' : statusLabel($value);
+        $entry['_status_error'] = $value === null ? 'Index ausserhalb der Statusliste' : null;
+    }
+    unset($entry);
+
+    return $entries;
 }
 
 /**
@@ -113,9 +205,10 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
  * @return array{entries: array, list_meta: array|null} list_meta enthält
  *   bei APIs mit dem Config-Flag 'list_meta' (aktuell ncTLS und piTLS) die für
  *   die GESAMTE Liste geltenden Angaben (nbf/exp/iat + aufgelöster Status) —
- *   sonst null. Bewusst nicht automatisch für alle single_jwt_list-APIs, da
- *   andere APIs (z.B. Statement-Listen mit Status pro Zeile) später anders
- *   behandelt werden.
+ *   sonst null. Bei APIs mit dem Config-Flag 'row_status' (aktuell idTS)
+ *   bekommt stattdessen JEDER Eintrag seinen eigenen aufgelösten Status
+ *   (siehe attachRowStatuses) — beide Flags schliessen sich fachlich aus,
+ *   je nachdem ob der Status für die ganze Liste oder pro Zeile gilt.
  */
 function fetchAllEntries(string $baseUrl, array $apiCfg): array
 {
@@ -172,6 +265,10 @@ function fetchAllEntries(string $baseUrl, array $apiCfg): array
             $totalPages = (int) ($json['page']['totalPages'] ?? 1);
             $page++;
         } while ($page < $totalPages);
+
+        if (!empty($apiCfg['row_status'])) {
+            $entries = attachRowStatuses($entries);
+        }
 
         return ['entries' => $entries, 'list_meta' => null];
     }
@@ -301,6 +398,35 @@ function formatRegistryIdsCell(mixed $value): string
 }
 
 /**
+ * Rendert den (pro Zeile aufgelösten) Status als farbigen Badge — dieselbe
+ * Optik wie beim list_meta-Panel von ncTLS/piTLS, nur pro Tabellenzeile
+ * statt einmal für die ganze Liste. Erwartet den kompletten Eintrag, da die
+ * Werte unter '_status_value'/'_status_label' liegen (siehe attachRowStatuses).
+ */
+function formatStatusBadgeCell(array $entry): string
+{
+    if (!array_key_exists('_status_label', $entry)) {
+        return '-';
+    }
+
+    $value = $entry['_status_value'] ?? null;
+    $label = $entry['_status_label'] ?? '-';
+
+    if ($label === '-') {
+        return '-';
+    }
+
+    $class = match ($value) {
+        0 => 'status-valid',
+        1 => 'status-revoked',
+        2 => 'status-suspended',
+        default => 'status-unknown',
+    };
+
+    return '<span class="status-badge ' . $class . '">' . htmlspecialchars($label) . '</span>';
+}
+
+/**
  * Prüft, ob ein Array assoziativ ist (vs. einer sequentiellen Liste entspricht).
  */
 function isAssocArray(array $arr): bool
@@ -351,8 +477,8 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
     if (isAssocArray($data)) {
         $html = '<table class="detail-kv">';
         foreach ($data as $key => $value) {
-            if ($key === '_jwt_header') {
-                continue; // Header wird separat gerendert
+            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error') {
+                continue; // Header wird separat gerendert, Status-Felder sind synthetisch (eigene Spalte/Badge)
             }
             $label = htmlspecialchars((string) $key);
 
@@ -373,23 +499,27 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
 
     $html = '<ul class="detail-list">';
     foreach ($data as $value) {
-        $html .= '<li>' . (is_array($value) ? renderDetailTree($value, $dateKeys) : renderDetailScalar($value)) . '</li>';
+        $isObject = is_array($value);
+        $itemClass = $isObject ? 'is-object' : 'is-scalar';
+        $html .= '<li class="' . $itemClass . '">' . ($isObject ? renderDetailTree($value, $dateKeys) : renderDetailScalar($value)) . '</li>';
     }
     $html .= '</ul>';
     return $html;
 }
 
 /**
- * Rendert die vollständige Detailansicht (Payload + Header) für einen Eintrag.
+ * Rendert die vollständige Detailansicht (Header + Payload) für einen
+ * Eintrag. Der JWT-Header steht zuerst, da er den Payload technisch "einleitet".
  */
 function renderEntryDetail(array $entry): string
 {
     $header = $entry['_jwt_header'] ?? null;
 
-    $html = '<div class="detail-section"><h4>Payload (vollständig)</h4>' . renderDetailTree($entry) . '</div>';
+    $html = '';
     if ($header !== null) {
         $html .= '<div class="detail-section"><h4>JWT-Header</h4>' . renderDetailTree($header) . '</div>';
     }
+    $html .= '<div class="detail-section"><h4>Payload (vollständig)</h4>' . renderDetailTree($entry) . '</div>';
     return $html;
 }
 

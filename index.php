@@ -164,7 +164,11 @@ if ($showPagination) {
     table.detail-kv th { background: transparent; border: none; width: 220px; font-weight: normal; color: #666; font-size: 12px; vertical-align: top; padding: 3px 8px 3px 0; }
     table.detail-kv td { border: none; padding: 3px 0; font-size: 12px; }
     .detail-raw { color: #999; font-size: 11px; }
-    ul.detail-list { margin: 0; padding-left: 18px; font-size: 12px; }
+    ul.detail-list { margin: 0; padding-left: 0; list-style: none; font-size: 12px; }
+    ul.detail-list li.is-object { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #e5e5e5; }
+    ul.detail-list li.is-object:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    ul.detail-list li.is-scalar { position: relative; padding: 2px 0 2px 14px; }
+    ul.detail-list li.is-scalar::before { content: '•'; position: absolute; left: 0; color: #bbb; }
     .detail-empty { color: #999; }
     .value-empty { color: #b06a00; font-style: italic; }
 
@@ -433,6 +437,8 @@ if ($showPagination) {
                                     <?= formatMultilangCell($entry, $col['key']) ?>
                                 <?php elseif ($col['type'] === 'registry_ids'): ?>
                                     <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
+                                <?php elseif ($col['type'] === 'status_badge'): ?>
+                                    <?= formatStatusBadgeCell($entry) ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
