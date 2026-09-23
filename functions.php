@@ -111,9 +111,9 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
  * Holt ALLE Einträge einer API (über alle Seiten hinweg, falls paginiert).
  *
  * @return array{entries: array, list_meta: array|null} list_meta enthält
- *   bei APIs mit dem Config-Flag 'list_meta' (aktuell nur ncTLS) die für die
- *   GESAMTE Liste geltenden Angaben (nbf/exp/iat + aufgelöster Status) —
- *   sonst null. Bewusst nicht generisch für alle single_jwt_list-APIs, da
+ *   bei APIs mit dem Config-Flag 'list_meta' (aktuell ncTLS und piTLS) die für
+ *   die GESAMTE Liste geltenden Angaben (nbf/exp/iat + aufgelöster Status) —
+ *   sonst null. Bewusst nicht automatisch für alle single_jwt_list-APIs, da
  *   andere APIs (z.B. Statement-Listen mit Status pro Zeile) später anders
  *   behandelt werden.
  */
@@ -440,7 +440,13 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
     $cacheKey = $envKey . '::' . $apiKey;
     $cached = $_SESSION['trust_explorer_cache'][$cacheKey] ?? null;
 
-    $isStale = $cached === null || (time() - $cached['fetched_at']) > $ttl;
+    // Fehlt 'list_meta' im gespeicherten Eintrag, stammt er von vor dieser
+    // Erweiterung (altes Cache-Format) — dann gilt er ebenfalls als veraltet,
+    // damit ein Schema-Update nicht durch einen stehengebliebenen Session-
+    // Cache "verschluckt" wird.
+    $isStale = $cached === null
+        || !array_key_exists('list_meta', $cached)
+        || (time() - $cached['fetched_at']) > $ttl;
 
     if ($forceRefresh || $isStale) {
         $result = fetchAllEntries($baseUrl, $apiCfg);
