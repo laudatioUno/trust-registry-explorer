@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 3;
+const CACHE_SCHEMA_VERSION = 5;
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -506,6 +506,33 @@ function formatVctValuesCell(array $entry): string
             foreach ($vctValues as $v) {
                 $values[] = (string) $v;
             }
+        }
+    }
+    $values = array_values(array_unique($values));
+
+    return $values !== [] ? htmlspecialchars(implode(', ', $values)) : '-';
+}
+
+/**
+ * Sammelt alle 'vct'-Werte aus can_issue (piaTS). Robust gegenüber beiden
+ * denkbaren Formen: ein einzelnes Objekt {vct: "..."} (aktuell beobachtet)
+ * ODER ein Array mehrerer solcher Objekte, falls das künftig vorkommt.
+ */
+function formatCanIssueCell(array $entry): string
+{
+    $canIssue = $entry['can_issue'] ?? null;
+    if (!is_array($canIssue)) {
+        return '-';
+    }
+
+    // Einzelnes Objekt (hat einen 'vct'-Schlüssel) in ein Array mit einem
+    // Element umwandeln, damit dieselbe Sammel-Logik für beide Fälle greift.
+    $items = array_key_exists('vct', $canIssue) ? [$canIssue] : $canIssue;
+
+    $values = [];
+    foreach ($items as $item) {
+        if (is_array($item) && isset($item['vct'])) {
+            $values[] = (string) $item['vct'];
         }
     }
     $values = array_values(array_unique($values));

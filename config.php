@@ -109,16 +109,22 @@ return [
         ],
 
         'piaTS' => [
-            'label'       => 'piaTS',
-            'description' => 'Protected Issuance Authorization Trust Statement',
-            'path'        => '/api/v2/protected-issuance-authorization-trust-statement',
-            'mode'        => 'paginated_jwt',
-            'columns'     => [
-                ['key' => 'sub',                       'label' => 'Issuer (DID)', 'type' => 'text', 'class' => 'cell-did'],
-                ['key' => 'iat',                       'label' => 'Erstellt am',  'type' => 'unix'],
-                ['key' => 'can_issue.vct',              'label' => 'VCT',          'type' => 'text'],
-                ['key' => 'can_issue.vct_name#de-CH',   'label' => 'VCT-Name (DE)','type' => 'text'],
-                ['key' => 'can_issue.reason#de-CH',     'label' => 'Grund (DE)',   'type' => 'text'],
+            'label'             => 'piaTS',
+            'description'       => 'Protected Issuance Authorization Trust Statement',
+            'path'              => '/api/v2/protected-issuance-authorization-trust-statement',
+            'mode'              => 'paginated_jwt',
+            'expandable'        => true,
+            'row_status'        => true,
+            'enrich_name_from'  => 'idTS',
+            // Header ist bei jedem Eintrag identisch (gleicher Issuer-Key) —
+            // kein Mehrwert pro Zeile, daher in der Detailansicht ausgeblendet.
+            'show_header'       => false,
+            'columns'           => [
+                ['key' => '_entity_name', 'label' => 'Name (from idTS)',      'type' => 'text'],
+                ['key' => 'can_issue',    'label' => 'Can Issue',             'type' => 'can_issue'],
+                ['key' => 'iat',          'label' => 'Created At',            'type' => 'unix'],
+                ['key' => '_status_value','label' => 'Status (from Statuslist)', 'type' => 'status_badge'],
+                ['key' => 'validity',     'label' => 'Validity',              'type' => 'validity_badge'],
             ],
         ],
 

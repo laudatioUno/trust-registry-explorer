@@ -445,6 +445,8 @@ if ($showPagination) {
                                     <?= formatStatusBadgeCell($entry) ?>
                                 <?php elseif ($col['type'] === 'vct_values'): ?>
                                     <?= formatVctValuesCell($entry) ?>
+                                <?php elseif ($col['type'] === 'can_issue'): ?>
+                                    <?= formatCanIssueCell($entry) ?>
                                 <?php elseif ($col['type'] === 'validity_badge'): ?>
                                     <?= formatValidityBadgeCell($entry) ?>
                                 <?php else: ?>
