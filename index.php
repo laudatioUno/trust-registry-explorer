@@ -73,7 +73,7 @@ if ($apiKey !== null) {
     $baseUrl = $config['environments'][$envKey]['base_url'];
 
     try {
-        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl']);
+        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
         $entries = $fetched['entries'];
         $listMeta = $fetched['list_meta'];
         $fetchedCount = count($entries);
