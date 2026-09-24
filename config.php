@@ -49,22 +49,27 @@ return [
         ],
 
         'ncTLS' => [
-            'label'       => 'ncTLS',
-            'description' => 'Non-Compliance Trust List',
-            'path'        => '/api/v2/non-compliance-trust-list',
-            'mode'        => 'single_jwt_list',
-            'list_field'  => 'non_compliant_actors',
+            'label'             => 'ncTLS',
+            'description'       => 'Non-Compliance Trust List',
+            'path'              => '/api/v2/non-compliance-trust-list',
+            'mode'              => 'single_jwt_list',
+            'list_field'        => 'non_compliant_actors',
             // nbf/exp/iat + aufgelöster Status gelten hier für die GESAMTE Liste
             // (ein JWT, eine Statusliste) — werden oberhalb der Tabelle angezeigt.
-            'list_meta'   => true,
-            'columns'     => [
-                ['key' => 'actor',        'label' => 'Actor (DID)',  'type' => 'text'],
-                ['key' => 'flagged_at',   'label' => 'Geflaggt am',  'type' => 'iso'],
-                ['key' => 'reason#de-CH', 'label' => 'Grund (DE)',   'type' => 'text'],
-                ['key' => 'reason#en',    'label' => 'Grund (EN)',   'type' => 'text'],
-                ['key' => 'reason#fr-CH', 'label' => 'Grund (FR)',   'type' => 'text'],
-                ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',   'type' => 'text'],
-                ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',   'type' => 'text'],
+            'list_meta'         => true,
+            // DID-Feld heisst hier 'actor' (nicht 'sub' wie bei den meisten
+            // anderen APIs) — Name wird trotzdem über idTS nachgeschlagen.
+            'enrich_name_from'  => 'idTS',
+            'enrich_did_field'  => 'actor',
+            'columns'           => [
+                ['key' => 'actor',        'label' => 'Actor (DID)',      'type' => 'text'],
+                ['key' => '_entity_name', 'label' => 'Name (from idTS)', 'type' => 'text'],
+                ['key' => 'flagged_at',   'label' => 'Geflaggt am',      'type' => 'iso'],
+                ['key' => 'reason#de-CH', 'label' => 'Grund (DE)',       'type' => 'text'],
+                ['key' => 'reason#en',    'label' => 'Grund (EN)',       'type' => 'text'],
+                ['key' => 'reason#fr-CH', 'label' => 'Grund (FR)',       'type' => 'text'],
+                ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',       'type' => 'text'],
+                ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',       'type' => 'text'],
             ],
         ],
 
