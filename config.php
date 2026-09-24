@@ -49,22 +49,27 @@ return [
         ],
 
         'ncTLS' => [
-            'label'       => 'ncTLS',
-            'description' => 'Non-Compliance Trust List',
-            'path'        => '/api/v2/non-compliance-trust-list',
-            'mode'        => 'single_jwt_list',
-            'list_field'  => 'non_compliant_actors',
+            'label'             => 'ncTLS',
+            'description'       => 'Non-Compliance Trust List',
+            'path'              => '/api/v2/non-compliance-trust-list',
+            'mode'              => 'single_jwt_list',
+            'list_field'        => 'non_compliant_actors',
             // nbf/exp/iat + aufgelöster Status gelten hier für die GESAMTE Liste
             // (ein JWT, eine Statusliste) — werden oberhalb der Tabelle angezeigt.
-            'list_meta'   => true,
-            'columns'     => [
-                ['key' => 'actor',        'label' => 'Actor (DID)',  'type' => 'text'],
-                ['key' => 'flagged_at',   'label' => 'Geflaggt am',  'type' => 'iso'],
-                ['key' => 'reason#de-CH', 'label' => 'Grund (DE)',   'type' => 'text'],
-                ['key' => 'reason#en',    'label' => 'Grund (EN)',   'type' => 'text'],
-                ['key' => 'reason#fr-CH', 'label' => 'Grund (FR)',   'type' => 'text'],
-                ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',   'type' => 'text'],
-                ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',   'type' => 'text'],
+            'list_meta'         => true,
+            // DID-Feld heisst hier 'actor' (nicht 'sub' wie bei den meisten
+            // anderen APIs) — Name wird trotzdem über idTS nachgeschlagen.
+            'enrich_name_from'  => 'idTS',
+            'enrich_did_field'  => 'actor',
+            'columns'           => [
+                ['key' => 'actor',        'label' => 'Actor (DID)',      'type' => 'text', 'class' => 'cell-did'],
+                ['key' => '_entity_name', 'label' => 'Name (from idTS)', 'type' => 'text'],
+                ['key' => 'flagged_at',   'label' => 'Geflaggt am',      'type' => 'iso'],
+                ['key' => 'reason#de-CH', 'label' => 'Grund (DE)',       'type' => 'text'],
+                ['key' => 'reason#en',    'label' => 'Grund (EN)',       'type' => 'text'],
+                ['key' => 'reason#fr-CH', 'label' => 'Grund (FR)',       'type' => 'text'],
+                ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',       'type' => 'text'],
+                ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',       'type' => 'text'],
             ],
         ],
 
@@ -106,7 +111,7 @@ return [
             'path'        => '/api/v2/protected-issuance-authorization-trust-statement',
             'mode'        => 'paginated_jwt',
             'columns'     => [
-                ['key' => 'sub',                       'label' => 'Issuer (DID)', 'type' => 'text'],
+                ['key' => 'sub',                       'label' => 'Issuer (DID)', 'type' => 'text', 'class' => 'cell-did'],
                 ['key' => 'iat',                       'label' => 'Erstellt am',  'type' => 'unix'],
                 ['key' => 'can_issue.vct',              'label' => 'VCT',          'type' => 'text'],
                 ['key' => 'can_issue.vct_name#de-CH',   'label' => 'VCT-Name (DE)','type' => 'text'],
@@ -126,7 +131,7 @@ return [
             'row_status'        => true,
             'enrich_name_from'  => 'idTS',
             'columns'           => [
-                ['key' => 'sub',               'label' => 'DID',                'type' => 'text'],
+                ['key' => 'sub',               'label' => 'DID',                'type' => 'text', 'class' => 'cell-did'],
                 ['key' => '_entity_name',      'label' => 'Name (from idTS)',    'type' => 'text'],
                 ['key' => 'authorized_fields', 'label' => 'Authorized Fields',   'type' => 'list'],
                 ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],

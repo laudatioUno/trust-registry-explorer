@@ -210,13 +210,15 @@ function attachRowStatuses(array $entries): array
 }
 
 /**
- * Reichert jeden Eintrag um '_entity_name' an, nachgeschlagen über 'sub'
- * (die DID) in den Einträgen einer ANDEREN API derselben Umgebung (z.B.
- * pvaTS-Zeilen mit dem Namen aus idTS verknüpfen). Nutzt denselben Session-
- * Cache wie die Quell-API selbst — löst also KEINEN zusätzlichen API-Call
- * aus, wenn diese schon geladen war. Kein Treffer → '_entity_name' bleibt null.
+ * Reichert jeden Eintrag um '_entity_name' an, nachgeschlagen über die DID
+ * in den Einträgen einer ANDEREN API derselben Umgebung (z.B. pvaTS/ncTLS-
+ * Zeilen mit dem Namen aus idTS verknüpfen). $didField ist der Feldname, in
+ * dem DIESE Einträge ihre DID tragen (z.B. 'sub' bei pvaTS, 'actor' bei
+ * ncTLS) — idTS selbst trägt seine DID immer unter 'sub'. Nutzt denselben
+ * Session-Cache wie die Quell-API selbst — löst also KEINEN zusätzlichen
+ * API-Call aus, wenn diese schon geladen war. Kein Treffer → '_entity_name' bleibt null.
  */
-function attachEntityNames(array $entries, string $envKey, string $baseUrl, string $sourceApiKey, array $allApis, int $ttl): array
+function attachEntityNames(array $entries, string $envKey, string $baseUrl, string $sourceApiKey, array $allApis, int $ttl, string $didField = 'sub'): array
 {
     if (!isset($allApis[$sourceApiKey])) {
         foreach ($entries as &$entry) {
@@ -240,7 +242,7 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
     }
 
     foreach ($entries as &$entry) {
-        $entry['_entity_name'] = $nameBySub[$entry['sub'] ?? null] ?? null;
+        $entry['_entity_name'] = $nameBySub[$entry[$didField] ?? null] ?? null;
     }
     unset($entry);
 
@@ -274,6 +276,10 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
         $entries = [];
         foreach ($listRaw as $item) {
             $entries[] = !empty($apiCfg['scalar_list']) ? ['value' => $item] : $item;
+        }
+
+        if (!empty($apiCfg['enrich_name_from'])) {
+            $entries = attachEntityNames($entries, $envKey, $baseUrl, $apiCfg['enrich_name_from'], $allApis, $ttl, $apiCfg['enrich_did_field'] ?? 'sub');
         }
 
         $listMeta = null;
@@ -322,7 +328,7 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
         }
 
         if (!empty($apiCfg['enrich_name_from'])) {
-            $entries = attachEntityNames($entries, $envKey, $baseUrl, $apiCfg['enrich_name_from'], $allApis, $ttl);
+            $entries = attachEntityNames($entries, $envKey, $baseUrl, $apiCfg['enrich_name_from'], $allApis, $ttl, $apiCfg['enrich_did_field'] ?? 'sub');
         }
 
         return ['entries' => $entries, 'list_meta' => null];
