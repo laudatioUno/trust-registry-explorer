@@ -152,6 +152,7 @@ if ($showPagination) {
     table { border-collapse: collapse; width: 100%; background: #fff; }
     th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; word-break: break-word; overflow-wrap: break-word; }
     th { background: #f2f2f2; white-space: nowrap; }
+    td.cell-did { font-family: monospace; font-size: 11px; word-break: break-all; max-width: 220px; }
 
     tr.entry-row.expandable { cursor: pointer; }
     tr.entry-row.expandable:hover { background: #f7fbff; }
@@ -192,7 +193,7 @@ if ($showPagination) {
     .list-meta-tile { background: #f7f9fb; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
     .list-meta-tile .lbl { font-size: 11px; color: #888; }
     .list-meta-tile .val { font-size: 13px; font-weight: bold; color: #222; }
-    .status-badge { display: inline-block; font-size: 12px; font-weight: bold; padding: 2px 10px; border-radius: 10px; }
+    .status-badge { display: inline-block; font-size: 12px; font-weight: bold; padding: 2px 10px; border-radius: 10px; white-space: nowrap; }
     .status-badge.status-valid { background: #e2f3e6; color: #1e7d34; }
     .status-badge.status-revoked { background: #fdecea; color: #a12622; }
     .status-badge.status-suspended { background: #fdf3e2; color: #a1651f; }
@@ -219,6 +220,7 @@ if ($showPagination) {
         table, thead, tbody, tr, th, td { display: block; width: 100%; box-sizing: border-box; }
         thead { display: none; }
         table { border: none; background: transparent; }
+        td.cell-did { max-width: none; font-size: 12px; }
 
         tr.entry-row { background: #fff; border: 1px solid #ddd; border-radius: 10px; margin-bottom: 8px; padding: 6px 10px; }
         tr.entry-row td { border: none; padding: 5px 0; }
@@ -431,7 +433,7 @@ if ($showPagination) {
                 <?php foreach ($pageEntries as $i => $entry): ?>
                     <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
                         <?php foreach ($config['apis'][$apiKey]['columns'] as $j => $col): ?>
-                            <td data-label="<?= htmlspecialchars($col['label']) ?>">
+                            <td data-label="<?= htmlspecialchars($col['label']) ?>" class="<?= htmlspecialchars($col['class'] ?? '') ?>">
                                 <?php if ($isExpandable && $j === 0): ?>
                                     <span class="caret">&#9656;</span>
                                 <?php endif; ?>
