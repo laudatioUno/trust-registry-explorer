@@ -488,6 +488,61 @@ function formatStatusBadgeCell(array $entry): string
 }
 
 /**
+ * Sammelt alle vct_values aus request.query.credentials[*].meta.vct_values
+ * eines vqPS-Eintrags (es kann theoretisch mehrere Credential-Queries pro
+ * Eintrag geben) und zeigt sie zusammengefasst in einer Zelle.
+ */
+function formatVctValuesCell(array $entry): string
+{
+    $credentials = $entry['request']['query']['credentials'] ?? [];
+    if (!is_array($credentials)) {
+        return '-';
+    }
+
+    $values = [];
+    foreach ($credentials as $credential) {
+        $vctValues = $credential['meta']['vct_values'] ?? [];
+        if (is_array($vctValues)) {
+            foreach ($vctValues as $v) {
+                $values[] = (string) $v;
+            }
+        }
+    }
+    $values = array_values(array_unique($values));
+
+    return $values !== [] ? htmlspecialchars(implode(', ', $values)) : '-';
+}
+
+/**
+ * Berechnet (rein clientseitig aus nbf/exp, KEIN API-Call) ob ein Eintrag
+ * aktuell gültig ist: "not yet valid" | "valid" | "expired". Für APIs ohne
+ * eigene status_list-Referenz (z.B. vqPS), im Unterschied zu
+ * attachRowStatuses/resolveTrustListStatus, die eine externe Statusliste abfragen.
+ */
+function computeValidity(mixed $nbf, mixed $exp): array
+{
+    $now = time();
+
+    if ($nbf !== null && $now < (int) $nbf) {
+        return ['label' => 'not yet valid', 'class' => 'status-suspended'];
+    }
+    if ($exp !== null && $now > (int) $exp) {
+        return ['label' => 'expired', 'class' => 'status-revoked'];
+    }
+    return ['label' => 'valid', 'class' => 'status-valid'];
+}
+
+/**
+ * Rendert die berechnete Validity als farbigen Badge (gleiche Optik wie
+ * formatStatusBadgeCell, aber ohne HTTP-Abruf — reine nbf/exp-Berechnung).
+ */
+function formatValidityBadgeCell(array $entry): string
+{
+    $validity = computeValidity($entry['nbf'] ?? null, $entry['exp'] ?? null);
+    return '<span class="status-badge ' . $validity['class'] . '">' . htmlspecialchars($validity['label']) . '</span>';
+}
+
+/**
  * Prüft, ob ein Array assoziativ ist (vs. einer sequentiellen Liste entspricht).
  */
 function isAssocArray(array $arr): bool
@@ -571,13 +626,15 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
 /**
  * Rendert die vollständige Detailansicht (Header + Payload) für einen
  * Eintrag. Der JWT-Header steht zuerst, da er den Payload technisch "einleitet".
+ * $showHeader = false unterdrückt den Header-Abschnitt (z.B. bei vqPS, wo der
+ * Header bei jedem Eintrag identisch ist und daher keinen Mehrwert bietet).
  */
-function renderEntryDetail(array $entry): string
+function renderEntryDetail(array $entry, bool $showHeader = true): string
 {
     $header = $entry['_jwt_header'] ?? null;
 
     $html = '';
-    if ($header !== null) {
+    if ($showHeader && $header !== null) {
         $html .= '<div class="detail-section"><h4>JWT-Header</h4>' . renderDetailTree($header) . '</div>';
     }
     $html .= '<div class="detail-section"><h4>Payload (vollständig)</h4>' . renderDetailTree($entry) . '</div>';

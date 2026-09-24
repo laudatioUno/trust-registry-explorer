@@ -298,7 +298,7 @@ if ($showPagination) {
                             <?php else: ?>
                                 <?php foreach ($r['entries'] as $i => $hit): ?>
                                     <?php if ($hitCount > 1): ?><p class="did-hit-label">Treffer <?= $i + 1 ?></p><?php endif; ?>
-                                    <?= renderEntryDetail($hit) ?>
+                                    <?= renderEntryDetail($hit, $apiCfgIter['show_header'] ?? true) ?>
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </div>
@@ -443,6 +443,10 @@ if ($showPagination) {
                                     <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
                                 <?php elseif ($col['type'] === 'status_badge'): ?>
                                     <?= formatStatusBadgeCell($entry) ?>
+                                <?php elseif ($col['type'] === 'vct_values'): ?>
+                                    <?= formatVctValuesCell($entry) ?>
+                                <?php elseif ($col['type'] === 'validity_badge'): ?>
+                                    <?= formatValidityBadgeCell($entry) ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
@@ -451,7 +455,7 @@ if ($showPagination) {
                     </tr>
                     <?php if ($isExpandable): ?>
                         <tr class="detail-row">
-                            <td colspan="<?= $columnCount ?>"><?= renderEntryDetail($entry) ?></td>
+                            <td colspan="<?= $columnCount ?>"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></td>
                         </tr>
                     <?php endif; ?>
                 <?php endforeach; ?>
