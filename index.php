@@ -148,9 +148,10 @@ if ($showPagination) {
     .toolbar input[type=text] { padding: 6px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; min-width: 220px; }
     .toolbar button, .refresh-btn { padding: 6px 14px; font-size: 13px; border: 1px solid #0b5fa5; background: #0b5fa5; color: #fff; border-radius: 4px; cursor: pointer; text-decoration: none; }
 
+    .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table { border-collapse: collapse; width: 100%; background: #fff; }
-    th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; }
-    th { background: #f2f2f2; }
+    th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; word-break: break-word; overflow-wrap: break-word; }
+    th { background: #f2f2f2; white-space: nowrap; }
 
     tr.entry-row.expandable { cursor: pointer; }
     tr.entry-row.expandable:hover { background: #f7fbff; }
@@ -410,6 +411,7 @@ if ($showPagination) {
 
     <?php else: ?>
 
+        <div class="table-scroll">
         <table>
             <thead>
                 <tr>
@@ -453,6 +455,7 @@ if ($showPagination) {
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
 
         <div class="pagination">
             <?php if ($showPagination): ?>
