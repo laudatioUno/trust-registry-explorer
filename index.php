@@ -29,6 +29,12 @@ if (!in_array($perPage, $pageSizeOptions, true)) {
     $perPage = $config['page_size'];
 }
 
+// Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
+// beim Umgebungs-/API-Wechsel automatisch weg (nicht in den Default-Params
+// von buildUrl), bleibt aber bei Suche/Pagination/Seitengrösse erhalten.
+$sortKey = $_GET['sort'] ?? null;
+$sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
 // ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
 
 $didQuery = trim((string) ($_GET['did'] ?? ''));
@@ -63,6 +69,18 @@ function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, arr
     return '?' . http_build_query($params);
 }
 
+/**
+ * Baut den Link für einen klickbaren Spaltenkopf: erstmaliger Klick sortiert
+ * aufsteigend, ein weiterer Klick auf dieselbe Spalte kehrt um (asc↔desc).
+ * Seite wird auf 0 zurückgesetzt, per_page bleibt erhalten (wie bei anderen
+ * Navigationen innerhalb derselben Tabelle).
+ */
+function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPage, string $colKey, ?string $currentSortKey, string $currentSortDir): string
+{
+    $nextDir = ($currentSortKey === $colKey && $currentSortDir === 'asc') ? 'desc' : 'asc';
+    return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage]);
+}
+
 $errorMessage = null;
 $entries = [];
 $fetchedCount = 0;
@@ -78,6 +96,19 @@ if ($apiKey !== null) {
         $listMeta = $fetched['list_meta'];
         $fetchedCount = count($entries);
         $entries = filterEntries($entries, $query);
+
+        if ($sortKey !== null) {
+            $sortCol = null;
+            foreach ($apiCfg['columns'] as $c) {
+                if ($c['key'] === $sortKey) {
+                    $sortCol = $c;
+                    break;
+                }
+            }
+            if ($sortCol !== null) {
+                $entries = sortEntries($entries, $sortCol, $sortDir);
+            }
+        }
     } catch (Throwable $e) {
         $errorMessage = $e->getMessage();
     }
@@ -152,6 +183,11 @@ if ($showPagination) {
     table { border-collapse: collapse; width: 100%; background: #fff; }
     th, td { border: 1px solid #ddd; padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; word-break: break-word; overflow-wrap: break-word; }
     th { background: #f2f2f2; white-space: nowrap; }
+    .sort-link { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; cursor: pointer; }
+    .sort-link:hover { color: #0b5fa5; }
+    .sort-link .sort-arrow { font-size: 10px; color: #bbb; }
+    .sort-link.active { color: #0b5fa5; }
+    .sort-link.active .sort-arrow { color: #0b5fa5; }
     td.cell-did { font-family: monospace; font-size: 11px; word-break: break-all; max-width: 220px; }
 
     tr.entry-row.expandable { cursor: pointer; }
@@ -418,7 +454,17 @@ if ($showPagination) {
             <thead>
                 <tr>
                     <?php foreach ($config['apis'][$apiKey]['columns'] as $col): ?>
-                        <th><?= htmlspecialchars($col['label']) ?></th>
+                        <?php
+                            $isSorted = $sortKey === $col['key'];
+                            $arrow = $isSorted ? ($sortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#8693;';
+                            $sortUrl = buildSortUrl($envKey, $apiKey, $query, $perPage, $col['key'], $sortKey, $sortDir);
+                        ?>
+                        <th>
+                            <a class="sort-link<?= $isSorted ? ' active' : '' ?>" href="<?= htmlspecialchars($sortUrl) ?>">
+                                <?= htmlspecialchars($col['label']) ?>
+                                <span class="sort-arrow"><?= $arrow ?></span>
+                            </a>
+                        </th>
                     <?php endforeach; ?>
                 </tr>
             </thead>
