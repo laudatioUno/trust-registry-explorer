@@ -701,6 +701,60 @@ function filterEntries(array $entries, string $query): array
 }
 
 /**
+ * Ermittelt einen vergleichbaren Sortier-Wert für einen Eintrag anhand einer
+ * Spalten-Definition — je nach Spaltentyp aus dem rohen Feld oder aus der
+ * berechneten/aggregierten Darstellung (z.B. Status-Label, VCT-Liste als Text).
+ * HTML aus den Zell-Renderern wird dabei entfernt (reiner Text zum Vergleichen).
+ */
+function getSortValue(array $entry, array $col): int|float|string
+{
+    return match ($col['type']) {
+        'unix' => (int) (getPath($entry, $col['key']) ?? PHP_INT_MIN),
+        'iso' => (function () use ($entry, $col) {
+            $v = getPath($entry, $col['key']);
+            return $v ? (strtotime((string) $v) ?: 0) : 0;
+        })(),
+        'raw_bool' => getPath($entry, $col['key']) === true ? 1 : 0,
+        'multilang' => (function () use ($entry, $col) {
+            $vals = collectMultilangValues($entry, $col['key']);
+            return mb_strtolower((string) (reset($vals) ?: ''));
+        })(),
+        'registry_ids' => mb_strtolower(strip_tags(formatRegistryIdsCell(getPath($entry, $col['key'])))),
+        'status_badge' => mb_strtolower((string) ($entry['_status_label'] ?? '')),
+        'validity_badge' => mb_strtolower(computeValidity($entry['nbf'] ?? null, $entry['exp'] ?? null)['label']),
+        'vct_values' => mb_strtolower(strip_tags(formatVctValuesCell($entry))),
+        'can_issue' => mb_strtolower(strip_tags(formatCanIssueCell($entry))),
+        'list' => (function () use ($entry, $col) {
+            $v = getPath($entry, $col['key']);
+            return mb_strtolower(is_array($v) ? implode(', ', $v) : (string) $v);
+        })(),
+        default => mb_strtolower((function () use ($entry, $col) {
+            $v = getPath($entry, $col['key']);
+            return is_scalar($v) ? (string) $v : '';
+        })()),
+    };
+}
+
+/**
+ * Sortiert die (bereits gefilterten) Einträge nach einer Spalte, auf- oder
+ * absteigend. Zeitstempel-/Bool-Spalten werden numerisch verglichen, alles
+ * andere als Text (case-insensitive). Läuft über den KOMPLETTEN Datensatz,
+ * nicht nur die aktuell angezeigte Seite — konsistent mit der Pagination.
+ */
+function sortEntries(array $entries, array $col, string $dir): array
+{
+    $isNumeric = in_array($col['type'], ['unix', 'iso', 'raw_bool'], true);
+
+    usort($entries, function ($a, $b) use ($col, $isNumeric) {
+        $va = getSortValue($a, $col);
+        $vb = getSortValue($b, $col);
+        return $isNumeric ? ($va <=> $vb) : strcasecmp((string) $va, (string) $vb);
+    });
+
+    return $dir === 'desc' ? array_reverse($entries) : $entries;
+}
+
+/**
  * Holt die Einträge (+ ggf. list_meta) für Umgebung+API, nutzt einen
  * Session-Cache und erzwingt bei $forceRefresh einen frischen API-Abruf.
  *
