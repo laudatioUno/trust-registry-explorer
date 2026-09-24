@@ -2,6 +2,16 @@
 declare(strict_types=1);
 
 /**
+ * Wird erhöht, wann immer sich die Struktur dessen ändert, was pro
+ * Umgebung+API im Session-Cache liegt (z.B. ein neues Feld wie list_meta
+ * oder eine Anreicherung wie _entity_name). Ein alter Cache-Eintrag mit
+ * abweichender Version gilt automatisch als veraltet und wird neu geladen —
+ * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
+ * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
+ */
+const CACHE_SCHEMA_VERSION = 3;
+
+/**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
  */
 function base64UrlDecode(string $data): string
@@ -200,17 +210,58 @@ function attachRowStatuses(array $entries): array
 }
 
 /**
+ * Reichert jeden Eintrag um '_entity_name' an, nachgeschlagen über 'sub'
+ * (die DID) in den Einträgen einer ANDEREN API derselben Umgebung (z.B.
+ * pvaTS-Zeilen mit dem Namen aus idTS verknüpfen). Nutzt denselben Session-
+ * Cache wie die Quell-API selbst — löst also KEINEN zusätzlichen API-Call
+ * aus, wenn diese schon geladen war. Kein Treffer → '_entity_name' bleibt null.
+ */
+function attachEntityNames(array $entries, string $envKey, string $baseUrl, string $sourceApiKey, array $allApis, int $ttl): array
+{
+    if (!isset($allApis[$sourceApiKey])) {
+        foreach ($entries as &$entry) {
+            $entry['_entity_name'] = null;
+        }
+        return $entries;
+    }
+
+    try {
+        $source = getEntriesCached($envKey, $sourceApiKey, $baseUrl, $allApis[$sourceApiKey], false, $ttl, $allApis);
+        $nameBySub = [];
+        foreach ($source['entries'] as $sourceEntry) {
+            $sub = $sourceEntry['sub'] ?? null;
+            $name = $sourceEntry['entity_name'] ?? null;
+            if ($sub !== null && $name !== null && $name !== '') {
+                $nameBySub[$sub] = $name;
+            }
+        }
+    } catch (Throwable) {
+        $nameBySub = [];
+    }
+
+    foreach ($entries as &$entry) {
+        $entry['_entity_name'] = $nameBySub[$entry['sub'] ?? null] ?? null;
+    }
+    unset($entry);
+
+    return $entries;
+}
+
+/**
  * Holt ALLE Einträge einer API (über alle Seiten hinweg, falls paginiert).
  *
+ * @param array $allApis Die komplette 'apis'-Config — wird nur gebraucht, wenn
+ *   $apiCfg 'enrich_name_from' gesetzt hat (Nachschlagen in einer ANDEREN API).
  * @return array{entries: array, list_meta: array|null} list_meta enthält
  *   bei APIs mit dem Config-Flag 'list_meta' (aktuell ncTLS und piTLS) die für
  *   die GESAMTE Liste geltenden Angaben (nbf/exp/iat + aufgelöster Status) —
- *   sonst null. Bei APIs mit dem Config-Flag 'row_status' (aktuell idTS)
- *   bekommt stattdessen JEDER Eintrag seinen eigenen aufgelösten Status
- *   (siehe attachRowStatuses) — beide Flags schliessen sich fachlich aus,
- *   je nachdem ob der Status für die ganze Liste oder pro Zeile gilt.
+ *   sonst null. Bei APIs mit dem Config-Flag 'row_status' (aktuell idTS,
+ *   pvaTS) bekommt stattdessen JEDER Eintrag seinen eigenen aufgelösten
+ *   Status (siehe attachRowStatuses). Bei 'enrich_name_from' bekommt jeder
+ *   Eintrag zusätzlich '_entity_name', nachgeschlagen über 'sub' in den
+ *   Einträgen der referenzierten API (z.B. idTS).
  */
-function fetchAllEntries(string $baseUrl, array $apiCfg): array
+function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $allApis, int $ttl): array
 {
     $url = $baseUrl . $apiCfg['path'];
 
@@ -268,6 +319,10 @@ function fetchAllEntries(string $baseUrl, array $apiCfg): array
 
         if (!empty($apiCfg['row_status'])) {
             $entries = attachRowStatuses($entries);
+        }
+
+        if (!empty($apiCfg['enrich_name_from'])) {
+            $entries = attachEntityNames($entries, $envKey, $baseUrl, $apiCfg['enrich_name_from'], $allApis, $ttl);
         }
 
         return ['entries' => $entries, 'list_meta' => null];
@@ -477,8 +532,8 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
     if (isAssocArray($data)) {
         $html = '<table class="detail-kv">';
         foreach ($data as $key => $value) {
-            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error') {
-                continue; // Header wird separat gerendert, Status-Felder sind synthetisch (eigene Spalte/Badge)
+            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
+                continue; // Header wird separat gerendert, diese Felder sind synthetisch (eigene Spalte/Badge)
             }
             $label = htmlspecialchars((string) $key);
 
@@ -559,9 +614,11 @@ function filterEntries(array $entries, string $query): array
  * Holt die Einträge (+ ggf. list_meta) für Umgebung+API, nutzt einen
  * Session-Cache und erzwingt bei $forceRefresh einen frischen API-Abruf.
  *
+ * @param array $allApis Die komplette 'apis'-Config, wird an fetchAllEntries
+ *   durchgereicht (nötig für 'enrich_name_from', das eine andere API nachschlägt).
  * @return array{entries: array, list_meta: array|null}
  */
-function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array $apiCfg, bool $forceRefresh, int $ttl): array
+function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array $apiCfg, bool $forceRefresh, int $ttl, array $allApis = []): array
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
         session_start();
@@ -570,19 +627,20 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
     $cacheKey = $envKey . '::' . $apiKey;
     $cached = $_SESSION['trust_explorer_cache'][$cacheKey] ?? null;
 
-    // Fehlt 'list_meta' im gespeicherten Eintrag, stammt er von vor dieser
-    // Erweiterung (altes Cache-Format) — dann gilt er ebenfalls als veraltet,
-    // damit ein Schema-Update nicht durch einen stehengebliebenen Session-
-    // Cache "verschluckt" wird.
+    // Ein Cache-Eintrag mit abweichender/fehlender CACHE_SCHEMA_VERSION stammt
+    // von vor einer Struktur-Änderung (z.B. neues Feld list_meta/_entity_name)
+    // und gilt automatisch als veraltet — verhindert, dass ein Code-Update
+    // durch einen stehengebliebenen Session-Cache "verschluckt" wird.
     $isStale = $cached === null
-        || !array_key_exists('list_meta', $cached)
+        || ($cached['schema'] ?? null) !== CACHE_SCHEMA_VERSION
         || (time() - $cached['fetched_at']) > $ttl;
 
     if ($forceRefresh || $isStale) {
-        $result = fetchAllEntries($baseUrl, $apiCfg);
+        $result = fetchAllEntries($envKey, $baseUrl, $apiCfg, $allApis, $ttl);
         $_SESSION['trust_explorer_cache'][$cacheKey] = [
             'entries'    => $result['entries'],
             'list_meta'  => $result['list_meta'],
+            'schema'     => CACHE_SCHEMA_VERSION,
             'fetched_at' => time(),
         ];
         return $result;
@@ -645,7 +703,7 @@ function searchAcrossApis(string $envKey, string $baseUrl, array $apis, string $
 
     foreach ($apis as $apiKey => $apiCfg) {
         try {
-            $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, false, $ttl);
+            $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, false, $ttl, $apis);
             $matches = filterEntries($fetched['entries'], $needle);
             $results[$apiKey] = ['entries' => $matches, 'error' => null];
 
