@@ -115,14 +115,21 @@ return [
         ],
 
         'pvaTS' => [
-            'label'       => 'pvaTS',
-            'description' => 'Protected Verification Authorization Trust Statement',
-            'path'        => '/api/v2/protected-verification-authorization-trust-statement',
-            'mode'        => 'paginated_jwt',
-            'columns'     => [
-                ['key' => 'sub',               'label' => 'Verifier (DID)',         'type' => 'text'],
-                ['key' => 'iat',               'label' => 'Erstellt am',            'type' => 'unix'],
-                ['key' => 'authorized_fields', 'label' => 'Autorisierte Felder',    'type' => 'list'],
+            'label'             => 'pvaTS',
+            'description'       => 'Protected Verification Authorization Trust Statement',
+            'path'              => '/api/v2/protected-verification-authorization-trust-statement',
+            'mode'              => 'paginated_jwt',
+            // Jede Zeile ist ein eigenständiges JWT mit eigenem Status (wie idTS) —
+            // daher row_status statt list_meta. Zusätzlich wird der Name über die
+            // DID aus den idTS-Einträgen derselben Umgebung nachgeschlagen.
+            'expandable'        => true,
+            'row_status'        => true,
+            'enrich_name_from'  => 'idTS',
+            'columns'           => [
+                ['key' => 'sub',               'label' => 'DID',                'type' => 'text'],
+                ['key' => '_entity_name',      'label' => 'Name (from idTS)',    'type' => 'text'],
+                ['key' => 'authorized_fields', 'label' => 'Authorized Fields',   'type' => 'list'],
+                ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],
             ],
         ],
 
