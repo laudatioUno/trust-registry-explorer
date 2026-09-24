@@ -89,19 +89,22 @@ return [
         ],
 
         'vqPS' => [
-            'label'       => 'vqPS',
-            'description' => 'Verification Query Public Statement',
-            'path'        => '/api/v2/verification-query-public-statement',
-            'mode'        => 'paginated_jwt',
+            'label'             => 'vqPS',
+            'description'       => 'Verification Query Public Statement',
+            'path'              => '/api/v2/verification-query-public-statement',
+            'mode'              => 'paginated_jwt',
             // Zeilen sind aufklappbar (siehe index.php) und zeigen dann alle JWT-Felder.
-            'expandable'  => true,
-            'columns'     => [
-                ['key' => 'request.scope',                            'label' => 'Scope',                  'type' => 'text'],
-                ['key' => 'purpose_name',                             'label' => 'Zweck (alle Sprachen)',  'type' => 'multilang'],
-                ['key' => 'request.query.credentials.0.format',       'label' => 'Format',                 'type' => 'text'],
-                ['key' => 'nbf',                                      'label' => 'Gültig ab (nbf)',        'type' => 'unix'],
-                ['key' => 'exp',                                      'label' => 'Gültig bis (exp)',       'type' => 'unix'],
-                ['key' => 'iat',                                      'label' => 'Erstellt am (iat)',      'type' => 'unix'],
+            'expandable'        => true,
+            // Der JWT-Header ist bei jedem Eintrag identisch (derselbe Issuer-Key) —
+            // bietet keinen Mehrwert pro Zeile, daher in der Detailansicht ausgeblendet.
+            'show_header'       => false,
+            'enrich_name_from'  => 'idTS',
+            'columns'           => [
+                ['key' => '_entity_name', 'label' => 'Name (from idTS)', 'type' => 'text'],
+                ['key' => 'vct_values',   'label' => 'VCT Values',       'type' => 'vct_values'],
+                ['key' => 'request.query.credentials.0.format', 'label' => 'Format', 'type' => 'text'],
+                ['key' => 'iat',          'label' => 'Issued At',        'type' => 'unix'],
+                ['key' => 'validity',     'label' => 'Validity',         'type' => 'validity_badge'],
             ],
         ],
 
