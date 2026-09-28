@@ -137,7 +137,7 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swiyu Trust Registry Explorer – History</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+<script src="assets/chart.umd.min.js"></script>
 <style>
     body { font-family: Arial, sans-serif; margin: 2em; color: #222; background: #fafafa; }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
