@@ -97,13 +97,18 @@ const INFO_TEXTS = [
  * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
  * oder 'validity' (siehe INFO_TEXTS).
  */
-function renderInfoIcon(string $key): string
+function renderInfoIcon(string $key, bool $mobileOnly = false): string
 {
     $text = INFO_TEXTS[$key] ?? '';
     if ($text === '') {
         return '';
     }
-    return '<span class="info-icon" tabindex="0" role="button" aria-label="Explanation">?'
+    // $mobileOnly: zusätzliches Icon direkt in der Tabellenzelle, nur per CSS
+    // auf Mobile sichtbar (siehe .info-icon-cell) -- auf Mobile wird <thead>
+    // (und damit das Spaltenkopf-Icon) komplett ausgeblendet, ohne dieses
+    // zweite Icon gäbe es dort also gar keine Erklärung mehr.
+    $class = 'info-icon' . ($mobileOnly ? ' info-icon-cell' : '');
+    return '<span class="' . $class . '" tabindex="0" role="button" aria-label="Explanation">?'
         . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
         . '</span>';
 }
@@ -280,21 +285,26 @@ if ($showPagination) {
     }
     .info-icon .info-tooltip {
         display: none;
-        position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%);
+        /* Bewusst UNTERHALB des Icons (nicht oberhalb): Header-Icons stecken in
+           .table-scroll, dessen overflow-x:auto laut CSS-Spec automatisch auch
+           overflow-y auf "auto" setzt -- eine nach oben herausragende Tooltip-
+           Box würde dadurch am oberen Rand des Containers abgeschnitten. */
+        position: absolute; top: 130%; left: 50%; transform: translateX(-50%);
         width: 220px; max-width: 60vw;
         background: #222; color: #fff; font-size: 11px; font-weight: normal;
         line-height: 1.4; padding: 8px 10px; border-radius: 6px;
         text-align: left; white-space: normal; z-index: 30;
     }
     .info-icon .info-tooltip::after {
-        content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-        border: 5px solid transparent; border-top-color: #222;
+        content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-bottom-color: #222;
     }
     .info-icon:hover .info-tooltip,
     .info-icon:focus .info-tooltip,
     .info-icon.open .info-tooltip { display: block; }
     th .info-icon { text-transform: none; }
     .list-meta-tile .lbl .info-icon { margin-left: 5px; }
+    .info-icon-cell { display: none; } /* auf Desktop reicht das Icon im Spaltenkopf; sichtbar gemacht im Mobile-Media-Query unten */
 
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
@@ -341,6 +351,10 @@ if ($showPagination) {
         table.detail-kv th { width: 40%; }
 
         .list-meta-grid { grid-template-columns: repeat(2, 1fr); }
+
+        /* thead (und damit das Spaltenkopf-Info-Icon) ist hier ausgeblendet
+           -- stattdessen das Icon direkt in der Zelle neben dem Badge zeigen. */
+        .info-icon-cell { display: inline-flex; }
 
         .pagination { justify-content: center; }
         .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
@@ -570,13 +584,13 @@ if ($showPagination) {
                                 <?php elseif ($col['type'] === 'registry_ids'): ?>
                                     <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
                                 <?php elseif ($col['type'] === 'status_badge'): ?>
-                                    <?= formatStatusBadgeCell($entry) ?>
+                                    <?= formatStatusBadgeCell($entry) ?> <?= renderInfoIcon('status', true) ?>
                                 <?php elseif ($col['type'] === 'vct_values'): ?>
                                     <?= formatVctValuesCell($entry) ?>
                                 <?php elseif ($col['type'] === 'can_issue'): ?>
                                     <?= formatCanIssueCell($entry) ?>
                                 <?php elseif ($col['type'] === 'validity_badge'): ?>
-                                    <?= formatValidityBadgeCell($entry) ?>
+                                    <?= formatValidityBadgeCell($entry) ?> <?= renderInfoIcon('validity', true) ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
