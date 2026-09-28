@@ -67,33 +67,62 @@ $isSelected = static function (string $env, string $api) use ($selectedSeries): 
 };
 
 // ---- Daten laden ----
+//
+// Bewusst KEINE echte Chart.js-Zeitachse (die einen zusätzlichen Datums-
+// Adapter + date-fns als weitere CDN-Abhängigkeit bräuchte, siehe PR-Notiz).
+// Stattdessen: eine gemeinsame, sortierte Liste aller vorkommenden
+// Zeitstempel (Vereinigung über alle gewählten Serien) als Kategorie-Achse
+// mit vorformatierten Labels — für tägliche Snapshots völlig ausreichend.
+// Jede Serie wird an diese gemeinsame Liste ausgerichtet; ein Zeitpunkt, an
+// dem eine Serie keinen (oder einen Fehler-)Eintrag hat, wird null (Lücke).
 
 $chartSeries = [];
+$labels = [];
 $dbError = null;
 
 try {
     $pdo = historyDbConnect($dbPath);
     historyEnsureSchema($pdo);
 
+    $rawSeries = [];
+    $allTs = [];
     foreach ($selectedSeries as $s) {
         $rows = historyFetchSeries($pdo, $s['env'], $s['api'], $fromTs, $toTs);
-
-        $points = [];
-        $errorCount = 0;
+        $rawSeries[] = ['s' => $s, 'rows' => $rows];
         foreach ($rows as $row) {
-            $points[] = [
-                'x' => ((int) $row['ts_utc']) * 1000, // Chart.js erwartet Millisekunden
-                'y' => $row['status'] === 'ok' ? (int) $row['count'] : null, // null -> Lücke (spanGaps:false)
-            ];
+            $allTs[(int) $row['ts_utc']] = true;
+        }
+    }
+
+    $allTs = array_keys($allTs);
+    sort($allTs);
+
+    $tz = new DateTimeZone('Europe/Zurich');
+    $labels = array_map(
+        static fn (int $ts) => (new DateTimeImmutable('@' . $ts))->setTimezone($tz)->format('d.m.Y'),
+        $allTs
+    );
+
+    foreach ($rawSeries as $entry) {
+        $byTs = [];
+        $errorCount = 0;
+        foreach ($entry['rows'] as $row) {
+            $byTs[(int) $row['ts_utc']] = $row['status'] === 'ok' ? (int) $row['count'] : null;
             if ($row['status'] !== 'ok') {
                 $errorCount++;
             }
         }
 
+        $data = [];
+        foreach ($allTs as $ts) {
+            $data[] = $byTs[$ts] ?? null; // fehlender Zeitpunkt für diese Serie -> auch eine Lücke
+        }
+
+        $s = $entry['s'];
         $chartSeries[] = [
             'label'      => $config['environments'][$s['env']]['label'] . ' · ' . $config['apis'][$s['api']]['label'],
-            'data'       => $points,
-            'pointCount' => count($rows),
+            'data'       => $data,
+            'pointCount' => count($entry['rows']),
             'errorCount' => $errorCount,
         ];
     }
@@ -108,8 +137,7 @@ try {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swiyu Trust Registry Explorer – History</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <style>
     body { font-family: Arial, sans-serif; margin: 2em; color: #222; background: #fafafa; }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
@@ -285,13 +313,14 @@ function toggleAll(state) {
 }
 
 <?php if ($selectedSeries !== [] && $dbError === null): ?>
+var chartLabels = <?= json_encode($labels, JSON_THROW_ON_ERROR) ?>;
 var chartSeries = <?= json_encode($chartSeries, JSON_THROW_ON_ERROR) ?>;
 var palette = ['#0b5fa5', '#1e7d34', '#a1651f', '#a12622', '#7a4fb5', '#0f9aa8', '#c2185b', '#5d6d7e', '#e08e0b', '#2e8b8b'];
 
 var datasets = chartSeries.map(function (s, i) {
     return {
         label: s.label,
-        data: s.data,
+        data: s.data, // ausgerichtet auf chartLabels, null = Lücke
         borderColor: palette[i % palette.length],
         backgroundColor: palette[i % palette.length],
         spanGaps: false, // fehlgeschlagene Collector-Läufe zeigen eine Lücke statt eines Sprungs auf 0
@@ -303,15 +332,14 @@ var datasets = chartSeries.map(function (s, i) {
 
 new Chart(document.getElementById('historyChart'), {
     type: 'line',
-    data: { datasets: datasets },
+    data: { labels: chartLabels, datasets: datasets },
     options: {
         responsive: true,
         interaction: { mode: 'nearest', axis: 'x', intersect: false },
         scales: {
             x: {
-                type: 'time',
-                time: { unit: 'day' },
                 title: { display: true, text: 'Zeit' },
+                ticks: { autoSkip: true, maxRotation: 60, minRotation: 0 },
             },
             y: {
                 type: '<?= $scale === 'log' ? 'logarithmic' : 'linear' ?>',
