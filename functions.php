@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 5;
+const CACHE_SCHEMA_VERSION = 6;
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -307,7 +307,16 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
         $totalPages = 1;
 
         do {
-            $pagedUrl = $url . '?filterActive=true&page=' . $page . '&size=20';
+            // Explizit filterActive=false (statt den Parameter wegzulassen):
+            // der Default bei fehlendem Parameter ist serverseitig "true", ein
+            // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
+            // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
+            // needs to validate the statements and cannot assume that all
+            // statements returned are indeed active") — der Explorer holt daher
+            // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
+            // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
+            // (Status-Badge / Validity-Badge).
+            $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=20';
             $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
 
             foreach ($json['content'] ?? [] as $jwt) {
