@@ -45,6 +45,7 @@ return [
                 ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
                 ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
                 ['key' => '_status_value',  'label' => 'Status',           'type' => 'status_badge'],
+                ['key' => 'validity',       'label' => 'Validity',         'type' => 'validity_badge'],
             ],
         ],
 
@@ -144,6 +145,7 @@ return [
                 ['key' => '_entity_name',      'label' => 'Name (from idTS)',    'type' => 'text'],
                 ['key' => 'authorized_fields', 'label' => 'Authorized Fields',   'type' => 'list'],
                 ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],
+                ['key' => 'validity',          'label' => 'Validity',            'type' => 'validity_badge'],
             ],
         ],
 
