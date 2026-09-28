@@ -81,6 +81,33 @@ function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPag
     return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage]);
 }
 
+/**
+ * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
+ * (clientseitig aus nbf/exp berechnet) — einheitlich an jeder Stelle
+ * verwendet, an der diese Begriffe auftauchen (Spaltenköpfe + list_meta-Panel),
+ * damit die Formulierung nicht pro API separat gepflegt werden muss.
+ */
+const INFO_TEXTS = [
+    'status'   => 'Status from status list.',
+    'validity' => 'Computed with nbf (not before) and exp (expired) in payload',
+];
+
+/**
+ * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
+ * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
+ * oder 'validity' (siehe INFO_TEXTS).
+ */
+function renderInfoIcon(string $key): string
+{
+    $text = INFO_TEXTS[$key] ?? '';
+    if ($text === '') {
+        return '';
+    }
+    return '<span class="info-icon" tabindex="0" role="button" aria-label="Explanation">?'
+        . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
+        . '</span>';
+}
+
 $errorMessage = null;
 $entries = [];
 $fetchedCount = 0;
@@ -231,7 +258,7 @@ if ($showPagination) {
 
     .list-meta-panel { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
     .list-meta-panel .hint { font-size: 11px; color: #999; margin: 0 0 10px; }
-    .list-meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .list-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
     .list-meta-tile { background: #f7f9fb; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
     .list-meta-tile .lbl { font-size: 11px; color: #888; }
     .list-meta-tile .val { font-size: 13px; font-weight: bold; color: #222; }
@@ -241,6 +268,33 @@ if ($showPagination) {
     .status-badge.status-suspended { background: #fdf3e2; color: #a1651f; }
     .status-badge.status-unknown { background: #eee; color: #666; }
     .list-meta-error { font-size: 11px; color: #a12622; margin: 8px 0 0; }
+
+    /* ---- Info-Icon mit Erklärungs-Tooltip (Status/Validity) ---- */
+    .info-icon {
+        position: relative;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; margin-left: 4px;
+        border-radius: 50%; background: #e6f1fb; color: #0b5fa5;
+        font-size: 10px; font-weight: bold; line-height: 1;
+        cursor: help; vertical-align: middle; user-select: none;
+    }
+    .info-icon .info-tooltip {
+        display: none;
+        position: absolute; bottom: 130%; left: 50%; transform: translateX(-50%);
+        width: 220px; max-width: 60vw;
+        background: #222; color: #fff; font-size: 11px; font-weight: normal;
+        line-height: 1.4; padding: 8px 10px; border-radius: 6px;
+        text-align: left; white-space: normal; z-index: 30;
+    }
+    .info-icon .info-tooltip::after {
+        content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-top-color: #222;
+    }
+    .info-icon:hover .info-tooltip,
+    .info-icon:focus .info-tooltip,
+    .info-icon.open .info-tooltip { display: block; }
+    th .info-icon { text-transform: none; }
+    .list-meta-tile .lbl .info-icon { margin-left: 5px; }
 
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
@@ -439,7 +493,7 @@ if ($showPagination) {
                     <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Status</span>
+                    <span class="lbl">Status <?= renderInfoIcon('status') ?></span>
                     <?php
                         $statusClass = match ($listMeta['status_value']) {
                             0 => 'status-valid',
@@ -450,6 +504,13 @@ if ($showPagination) {
                     ?>
                     <span class="val">
                         <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars($listMeta['status_label']) ?></span>
+                    </span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl">Validity <?= renderInfoIcon('validity') ?></span>
+                    <?php $listMetaValidity = computeValidity($listMeta['nbf'], $listMeta['exp']); ?>
+                    <span class="val">
+                        <span class="status-badge <?= $listMetaValidity['class'] ?>"><?= htmlspecialchars($listMetaValidity['label']) ?></span>
                     </span>
                 </div>
             </div>
@@ -480,6 +541,11 @@ if ($showPagination) {
                                 <?= htmlspecialchars($col['label']) ?>
                                 <span class="sort-arrow"><?= $arrow ?></span>
                             </a>
+                            <?php if ($col['type'] === 'status_badge'): ?>
+                                <?= renderInfoIcon('status') ?>
+                            <?php elseif ($col['type'] === 'validity_badge'): ?>
+                                <?= renderInfoIcon('validity') ?>
+                            <?php endif; ?>
                         </th>
                     <?php endforeach; ?>
                 </tr>
@@ -603,6 +669,21 @@ document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
         var caret = row.querySelector('.caret');
         if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
     });
+});
+
+// Info-Icons (Status/Validity-Erklärung): Klick/Tap toggelt die Tooltip-
+// Sichtbarkeit (nötig für Touch-Geräte ohne Hover), Klick ausserhalb
+// schliesst alle offenen Tooltips wieder.
+document.querySelectorAll('.info-icon').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var wasOpen = icon.classList.contains('open');
+        document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
+        if (!wasOpen) icon.classList.add('open');
+    });
+});
+document.addEventListener('click', function () {
+    document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
 });
 </script>
 
