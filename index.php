@@ -139,6 +139,12 @@ if ($showPagination) {
     body { font-family: Arial, sans-serif; margin: 2em; color: #222; background: #fafafa; }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
 
+    .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
+    .page-header h1 { margin: 0; }
+    .top-nav { display: flex; gap: 6px; }
+    .top-nav a { padding: 6px 16px; font-size: 13px; border: 1px solid #ccc; border-radius: 20px; text-decoration: none; color: #444; background: #fff; }
+    .top-nav a.active { background: #0b5fa5; border-color: #0b5fa5; color: #fff; font-weight: bold; }
+
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid #ccc; margin-bottom: 16px; }
     .tabs a { padding: 8px 18px; font-size: 14px; text-decoration: none; color: #555; border-bottom: 3px solid transparent; }
     .tabs a.active { color: #0b5fa5; border-bottom-color: #0b5fa5; font-weight: bold; }
@@ -240,6 +246,10 @@ if ($showPagination) {
     @media (max-width: 640px) {
         body { margin: 0.75em; }
 
+        .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
+        .top-nav { justify-content: center; }
+        .top-nav a { flex: 1; text-align: center; }
+
         .tabs { gap: 4px; }
         .tabs a { flex: 1; text-align: center; padding: 10px 4px; }
 
@@ -286,7 +296,13 @@ if ($showPagination) {
 </head>
 <body>
 
-<h1>Swiyu Trust Registry Explorer</h1>
+<div class="page-header">
+    <h1>Swiyu Trust Registry Explorer</h1>
+    <div class="top-nav">
+        <a href="index.php" class="active">Explorer</a>
+        <a href="history.php">History</a>
+    </div>
+</div>
 
 <div class="did-search">
     <form method="get">
