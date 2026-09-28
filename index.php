@@ -81,6 +81,38 @@ function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPag
     return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage]);
 }
 
+/**
+ * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
+ * (clientseitig aus nbf/exp berechnet) — einheitlich an jeder Stelle
+ * verwendet, an der diese Begriffe auftauchen (Spaltenköpfe + list_meta-Panel),
+ * damit die Formulierung nicht pro API separat gepflegt werden muss.
+ */
+const INFO_TEXTS = [
+    'status'   => 'Status from status list.',
+    'validity' => 'Computed with nbf (not before) and exp (expired) in payload',
+];
+
+/**
+ * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
+ * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
+ * oder 'validity' (siehe INFO_TEXTS).
+ */
+function renderInfoIcon(string $key, bool $mobileOnly = false): string
+{
+    $text = INFO_TEXTS[$key] ?? '';
+    if ($text === '') {
+        return '';
+    }
+    // $mobileOnly: zusätzliches Icon direkt in der Tabellenzelle, nur per CSS
+    // auf Mobile sichtbar (siehe .info-icon-cell) -- auf Mobile wird <thead>
+    // (und damit das Spaltenkopf-Icon) komplett ausgeblendet, ohne dieses
+    // zweite Icon gäbe es dort also gar keine Erklärung mehr.
+    $class = 'info-icon' . ($mobileOnly ? ' info-icon-cell' : '');
+    return '<span class="' . $class . '" tabindex="0" role="button" aria-label="Explanation">?'
+        . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
+        . '</span>';
+}
+
 $errorMessage = null;
 $entries = [];
 $fetchedCount = 0;
@@ -231,7 +263,7 @@ if ($showPagination) {
 
     .list-meta-panel { background: #fff; border: 1px solid #ddd; border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
     .list-meta-panel .hint { font-size: 11px; color: #999; margin: 0 0 10px; }
-    .list-meta-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .list-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
     .list-meta-tile { background: #f7f9fb; border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
     .list-meta-tile .lbl { font-size: 11px; color: #888; }
     .list-meta-tile .val { font-size: 13px; font-weight: bold; color: #222; }
@@ -241,6 +273,38 @@ if ($showPagination) {
     .status-badge.status-suspended { background: #fdf3e2; color: #a1651f; }
     .status-badge.status-unknown { background: #eee; color: #666; }
     .list-meta-error { font-size: 11px; color: #a12622; margin: 8px 0 0; }
+
+    /* ---- Info-Icon mit Erklärungs-Tooltip (Status/Validity) ---- */
+    .info-icon {
+        position: relative;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; margin-left: 4px;
+        border-radius: 50%; background: #e6f1fb; color: #0b5fa5;
+        font-size: 10px; font-weight: bold; line-height: 1;
+        cursor: help; vertical-align: middle; user-select: none;
+    }
+    .info-icon .info-tooltip {
+        display: none;
+        /* Bewusst UNTERHALB des Icons (nicht oberhalb): Header-Icons stecken in
+           .table-scroll, dessen overflow-x:auto laut CSS-Spec automatisch auch
+           overflow-y auf "auto" setzt -- eine nach oben herausragende Tooltip-
+           Box würde dadurch am oberen Rand des Containers abgeschnitten. */
+        position: absolute; top: 130%; left: 50%; transform: translateX(-50%);
+        width: 220px; max-width: 60vw;
+        background: #222; color: #fff; font-size: 11px; font-weight: normal;
+        line-height: 1.4; padding: 8px 10px; border-radius: 6px;
+        text-align: left; white-space: normal; z-index: 30;
+    }
+    .info-icon .info-tooltip::after {
+        content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-bottom-color: #222;
+    }
+    .info-icon:hover .info-tooltip,
+    .info-icon:focus .info-tooltip,
+    .info-icon.open .info-tooltip { display: block; }
+    th .info-icon { text-transform: none; }
+    .list-meta-tile .lbl .info-icon { margin-left: 5px; }
+    .info-icon-cell { display: none; } /* auf Desktop reicht das Icon im Spaltenkopf; sichtbar gemacht im Mobile-Media-Query unten */
 
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
@@ -287,6 +351,10 @@ if ($showPagination) {
         table.detail-kv th { width: 40%; }
 
         .list-meta-grid { grid-template-columns: repeat(2, 1fr); }
+
+        /* thead (und damit das Spaltenkopf-Info-Icon) ist hier ausgeblendet
+           -- stattdessen das Icon direkt in der Zelle neben dem Badge zeigen. */
+        .info-icon-cell { display: inline-flex; }
 
         .pagination { justify-content: center; }
         .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
@@ -439,7 +507,7 @@ if ($showPagination) {
                     <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Status</span>
+                    <span class="lbl">Status <?= renderInfoIcon('status') ?></span>
                     <?php
                         $statusClass = match ($listMeta['status_value']) {
                             0 => 'status-valid',
@@ -450,6 +518,13 @@ if ($showPagination) {
                     ?>
                     <span class="val">
                         <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars($listMeta['status_label']) ?></span>
+                    </span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl">Validity <?= renderInfoIcon('validity') ?></span>
+                    <?php $listMetaValidity = computeValidity($listMeta['nbf'], $listMeta['exp']); ?>
+                    <span class="val">
+                        <span class="status-badge <?= $listMetaValidity['class'] ?>"><?= htmlspecialchars($listMetaValidity['label']) ?></span>
                     </span>
                 </div>
             </div>
@@ -480,6 +555,11 @@ if ($showPagination) {
                                 <?= htmlspecialchars($col['label']) ?>
                                 <span class="sort-arrow"><?= $arrow ?></span>
                             </a>
+                            <?php if ($col['type'] === 'status_badge'): ?>
+                                <?= renderInfoIcon('status') ?>
+                            <?php elseif ($col['type'] === 'validity_badge'): ?>
+                                <?= renderInfoIcon('validity') ?>
+                            <?php endif; ?>
                         </th>
                     <?php endforeach; ?>
                 </tr>
@@ -504,13 +584,13 @@ if ($showPagination) {
                                 <?php elseif ($col['type'] === 'registry_ids'): ?>
                                     <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
                                 <?php elseif ($col['type'] === 'status_badge'): ?>
-                                    <?= formatStatusBadgeCell($entry) ?>
+                                    <?= formatStatusBadgeCell($entry) ?> <?= renderInfoIcon('status', true) ?>
                                 <?php elseif ($col['type'] === 'vct_values'): ?>
                                     <?= formatVctValuesCell($entry) ?>
                                 <?php elseif ($col['type'] === 'can_issue'): ?>
                                     <?= formatCanIssueCell($entry) ?>
                                 <?php elseif ($col['type'] === 'validity_badge'): ?>
-                                    <?= formatValidityBadgeCell($entry) ?>
+                                    <?= formatValidityBadgeCell($entry) ?> <?= renderInfoIcon('validity', true) ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
@@ -603,6 +683,21 @@ document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
         var caret = row.querySelector('.caret');
         if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
     });
+});
+
+// Info-Icons (Status/Validity-Erklärung): Klick/Tap toggelt die Tooltip-
+// Sichtbarkeit (nötig für Touch-Geräte ohne Hover), Klick ausserhalb
+// schliesst alle offenen Tooltips wieder.
+document.querySelectorAll('.info-icon').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var wasOpen = icon.classList.contains('open');
+        document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
+        if (!wasOpen) icon.classList.add('open');
+    });
+});
+document.addEventListener('click', function () {
+    document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
 });
 </script>
 
