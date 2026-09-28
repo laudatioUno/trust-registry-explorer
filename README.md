@@ -17,8 +17,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle
 
 ## Screenshot
-
-<!-- Add screenshots here -->
+![Alternativtext](screenshot-home.png)
 
 ## Requirements
 
