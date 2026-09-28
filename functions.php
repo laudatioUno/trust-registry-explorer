@@ -347,6 +347,164 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
 }
 
 /**
+ * Ermittelt NUR die Gesamtanzahl der Einträge einer API, ohne alle Seiten
+ * zu laden/dekodieren — für den nächtlichen History-Collector (collect.php),
+ * der jede Nacht jede Umgebung x jede API abfragt und dabei möglichst wenig
+ * Daten übertragen soll.
+ *
+ * - 'paginated_jwt': nutzt den size=1-Trick, um page.totalElements zu lesen,
+ *   ohne die eigentlichen (potenziell hunderten) JWTs herunterzuladen.
+ *   filterActive=false, damit konsistent zu fetchAllEntries() ALLE
+ *   Statements gezählt werden (aktiv + inaktiv), nicht nur ein Teil.
+ * - 'single_jwt_list': hier gibt es ohnehin nur EINEN Request (ein JWT),
+ *   der die komplette Liste im Payload enthält — wird also normal
+ *   abgerufen und die Liste gezählt.
+ */
+function fetchEntryCount(string $baseUrl, array $apiCfg): int
+{
+    $url = $baseUrl . $apiCfg['path'];
+
+    if ($apiCfg['mode'] === 'single_jwt_list') {
+        $raw = httpGet($url);
+        $decoded = decodeJwt($raw);
+        $list = $decoded['payload'][$apiCfg['list_field']] ?? [];
+        return is_array($list) ? count($list) : 0;
+    }
+
+    if ($apiCfg['mode'] === 'paginated_jwt') {
+        $countUrl = $url . '?filterActive=false&page=0&size=1';
+        $json = json_decode(httpGet($countUrl), true, flags: JSON_THROW_ON_ERROR);
+        return (int) ($json['page']['totalElements'] ?? 0);
+    }
+
+    throw new RuntimeException("Unbekannter API-Modus: {$apiCfg['mode']}");
+}
+
+/**
+ * Öffnet (und erstellt bei Bedarf das Verzeichnis für) die SQLite-Datenbank
+ * für das History-Feature.
+ */
+function historyDbConnect(string $dbPath): PDO
+{
+    $dir = dirname($dbPath);
+    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+        throw new RuntimeException("Konnte Verzeichnis für History-DB nicht anlegen: $dir");
+    }
+
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec('PRAGMA journal_mode = WAL'); // robuster bei gleichzeitigem Cron-Write + Web-Read
+
+    return $pdo;
+}
+
+/**
+ * Legt das Schema an, falls noch nicht vorhanden (idempotent, sicher bei
+ * jedem Aufruf ausführbar — sowohl vom Collector als auch von der Web-Ansicht).
+ */
+function historyEnsureSchema(PDO $pdo): void
+{
+    $pdo->exec('
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id       INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts_utc   INTEGER NOT NULL,
+            env      TEXT NOT NULL,
+            api      TEXT NOT NULL,
+            count    INTEGER,
+            status   TEXT NOT NULL,
+            error    TEXT
+        )
+    ');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_snapshots_env_api_ts ON snapshots (env, api, ts_utc)');
+}
+
+/**
+ * Schreibt einen einzelnen Snapshot (eine Umgebung+API, ein Collector-Lauf).
+ * $count ist null bei status='error' — bewusst NICHT 0, damit ein Fehlschlag
+ * im Chart später als Lücke sichtbar ist statt als (falscher) Einbruch auf 0.
+ */
+function historyInsertSnapshot(PDO $pdo, int $tsUtc, string $env, string $api, ?int $count, string $status, ?string $error): void
+{
+    $stmt = $pdo->prepare('
+        INSERT INTO snapshots (ts_utc, env, api, count, status, error)
+        VALUES (:ts_utc, :env, :api, :count, :status, :error)
+    ');
+    $stmt->execute([
+        ':ts_utc' => $tsUtc,
+        ':env'    => $env,
+        ':api'    => $api,
+        ':count'  => $count,
+        ':status' => $status,
+        ':error'  => $error,
+    ]);
+}
+
+/**
+ * Liest die Snapshot-Reihe für eine Umgebung+API im Zeitraum [$fromTs, $toTs]
+ * (beide inklusive, Unix-Timestamps UTC), aufsteigend nach Zeit sortiert.
+ *
+ * @return list<array{ts_utc:int, count:int|null, status:string, error:string|null}>
+ */
+function historyFetchSeries(PDO $pdo, string $env, string $api, int $fromTs, int $toTs): array
+{
+    $stmt = $pdo->prepare('
+        SELECT ts_utc, count, status, error
+        FROM snapshots
+        WHERE env = :env AND api = :api AND ts_utc BETWEEN :from_ts AND :to_ts
+        ORDER BY ts_utc ASC
+    ');
+    $stmt->execute([':env' => $env, ':api' => $api, ':from_ts' => $fromTs, ':to_ts' => $toTs]);
+
+    /** @var list<array{ts_utc:int, count:int|null, status:string, error:string|null}> $rows */
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return $rows;
+}
+
+/**
+ * Löst einen Zeitraum-Preset-Key (siehe config.php 'history.range_options')
+ * zu einem konkreten [from, to]-Unix-Timestamp-Paar (UTC) auf. 'custom'
+ * nutzt $customFrom/$customTo (Format Y-m-d, aus <input type=date>),
+ * ausgewertet in der Zeitzone Europe/Zurich (Tagesgrenzen lokal, nicht UTC).
+ *
+ * @return array{from:int, to:int}
+ */
+function historyResolveRange(string $rangeKey, ?string $customFrom, ?string $customTo): array
+{
+    $tz  = new DateTimeZone('Europe/Zurich');
+    $now = new DateTimeImmutable('now', $tz);
+    $to  = $now->getTimestamp();
+
+    $from = match ($rangeKey) {
+        '7d'     => $now->modify('-7 days')->getTimestamp(),
+        '30d'    => $now->modify('-30 days')->getTimestamp(),
+        '90d'    => $now->modify('-90 days')->getTimestamp(),
+        '1y'     => $now->modify('-1 year')->getTimestamp(),
+        'all'    => 0,
+        'custom' => (function () use ($customFrom, $tz): int {
+            if ($customFrom === null || $customFrom === '') {
+                return 0;
+            }
+            try {
+                return (new DateTimeImmutable($customFrom, $tz))->setTime(0, 0)->getTimestamp();
+            } catch (Exception) {
+                return 0;
+            }
+        })(),
+        default => $now->modify('-7 days')->getTimestamp(),
+    };
+
+    if ($rangeKey === 'custom' && $customTo !== null && $customTo !== '') {
+        try {
+            $to = (new DateTimeImmutable($customTo, $tz))->setTime(23, 59, 59)->getTimestamp();
+        } catch (Exception) {
+            // $to bleibt "jetzt"
+        }
+    }
+
+    return ['from' => $from, 'to' => $to];
+}
+
+/**
  * Liest einen Wert aus einem verschachtelten Array via Punkt-Pfad,
  * z.B. "can_issue.vct_name#de-CH" oder "request.scope".
  */

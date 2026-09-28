@@ -1,0 +1,8 @@
+# History-Feature: die SQLite-Datenbank und ihre WAL/SHM-Begleitdateien
+# sind Laufzeitdaten (vom Cronjob collect.php erzeugt) und gehören nicht
+# ins Repository. storage/.gitkeep sorgt dafür, dass der Ordner selbst
+# trotzdem mitversioniert wird.
+storage/*.sqlite
+storage/*.sqlite-wal
+storage/*.sqlite-shm
+storage/collect.log

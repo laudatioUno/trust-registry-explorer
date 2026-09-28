@@ -159,4 +159,24 @@ return [
     // Wie lange der Session-Cache pro Umgebung+API gültig ist, bevor
     // ohne expliziten "Abfragen"-Klick automatisch neu geladen wird (Sekunden)
     'cache_ttl' => 300,
+
+    // History-Feature: Ablage der nächtlich per Cronjob (collect.php)
+    // gesammelten Trust-Statement-Zählungen (SQLite, filebasiert).
+    'history' => [
+        // Pfad zur SQLite-Datenbank. Verzeichnis muss für den Cron-User
+        // (collect.php) und den Webserver-User (history.php) beschreibbar
+        // bzw. lesbar sein.
+        'db_path' => __DIR__ . '/storage/history.sqlite',
+
+        // Zeitraum-Presets für die History-Ansicht (Dropdown), Schlüssel
+        // 'custom' schaltet die Von/Bis-Datumsfelder frei.
+        'range_options' => [
+            '7d'     => 'Letzte 7 Tage',
+            '30d'    => 'Letzte 30 Tage',
+            '90d'    => 'Letzte 90 Tage',
+            '1y'     => 'Letztes Jahr',
+            'all'    => 'Alle Daten',
+            'custom' => 'Benutzerdefiniert',
+        ],
+    ],
 ];
