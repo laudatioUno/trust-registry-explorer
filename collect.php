@@ -19,7 +19,14 @@ declare(strict_types=1);
  * eines irreführenden Einbruchs auf 0.
  *
  * Aufruf (Beispiel-Crontab, täglich um 23:00 Europe/Zurich):
- *   0 23 * * * php /pfad/zum/projekt/collect.php >> /pfad/zum/projekt/storage/collect.log 2>&1
+ *   0 23 * * * php /pfad/zum/projekt/collect.php
+ *
+ * Das Skript schreibt sein Log SELBST nach storage/collect.log (via __DIR__,
+ * also unabhängig vom Arbeitsverzeichnis des Cron-/Scheduler-Aufrufs — bei
+ * vielen Hosting-Panels ist das nicht das Projektverzeichnis, wodurch eine
+ * Shell-Umleitung ">> storage/collect.log" mit relativem Pfad ins Leere
+ * läuft). Eine zusätzliche Umleitung (">> ... 2>&1") schadet nicht, ist aber
+ * nicht mehr nötig.
  *
  * Nutzt bewusst KEINEN Session-Cache (CLI hat ohnehin keine Session) — jeder
  * Lauf fragt alle APIs frisch ab.
@@ -34,13 +41,31 @@ if (PHP_SAPI !== 'cli') {
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
-$dbPath = $config['history']['db_path'] ?? __DIR__ . '/storage/history.sqlite';
+$dbPath  = $config['history']['db_path'] ?? __DIR__ . '/storage/history.sqlite';
+$logPath = __DIR__ . '/storage/collect.log';
+
+/**
+ * Schreibt eine Zeile gleichzeitig auf STDOUT (sichtbar im Scheduler-Log
+ * des Hosting-Panels) und in storage/collect.log (verlässlich, weil über
+ * __DIR__ aufgelöst statt über eine Shell-Umleitung mit relativem Pfad).
+ */
+function logLine(string $logPath, string $line): void
+{
+    $stamped = '[' . date('Y-m-d H:i:s') . '] ' . $line;
+    echo $stamped . "\n";
+
+    $dir = dirname($logPath);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    @file_put_contents($logPath, $stamped . "\n", FILE_APPEND | LOCK_EX);
+}
 
 try {
     $pdo = historyDbConnect($dbPath);
     historyEnsureSchema($pdo);
 } catch (Throwable $e) {
-    fwrite(STDERR, 'Konnte History-Datenbank nicht öffnen/initialisieren: ' . $e->getMessage() . "\n");
+    logLine($logPath, 'FATAL: Konnte History-Datenbank nicht öffnen/initialisieren: ' . $e->getMessage());
     exit(1);
 }
 
@@ -59,14 +84,14 @@ foreach ($config['environments'] as $envKey => $envCfg) {
         try {
             $count = fetchEntryCount($envCfg['base_url'], $apiCfg);
             historyInsertSnapshot($pdo, $runTs, $envKey, $apiKey, $count, 'ok', null);
-            echo "[$envKey/$apiKey] OK: $count\n";
+            logLine($logPath, "[$envKey/$apiKey] OK: $count");
         } catch (Throwable $e) {
             $errors++;
             historyInsertSnapshot($pdo, $runTs, $envKey, $apiKey, null, 'error', $e->getMessage());
-            echo "[$envKey/$apiKey] ERROR: {$e->getMessage()}\n";
+            logLine($logPath, "[$envKey/$apiKey] ERROR: {$e->getMessage()}");
         }
     }
 }
 
-echo "Fertig: $total Kombinationen verarbeitet, $errors Fehler.\n";
+logLine($logPath, "Fertig: $total Kombinationen verarbeitet, $errors Fehler.");
 exit($errors > 0 ? 1 : 0);
