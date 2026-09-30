@@ -84,8 +84,15 @@ return [
             // gleiches Panel-Design wie bei ncTLS.
             'list_meta'   => true,
             'scalar_list' => true,
+            // Verknüpfung mit piaTS: jedes VCT hier wird gegen piaTS'
+            // can_issue-Felder gezählt (siehe attachIssuerCounts()). Zeile
+            // aufklappbar (Klick auf Zeile) zeigt die gefundenen Issuer inline;
+            // Klick auf die Zahl selbst springt stattdessen zu piaTS (vorgefiltert).
+            'expandable'        => true,
+            'issuer_count_from' => 'piaTS',
             'columns'     => [
-                ['key' => 'value', 'label' => 'VCT-Wert', 'type' => 'text'],
+                ['key' => 'value',         'label' => 'VCT-Wert',                   'type' => 'text'],
+                ['key' => '_issuer_count', 'label' => 'Amount of allowed issuers',  'type' => 'issuer_count'],
             ],
         ],
 

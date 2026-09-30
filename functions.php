@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 6;
+const CACHE_SCHEMA_VERSION = 7;
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -250,6 +250,70 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
 }
 
 /**
+ * Baut eine Map VCT-Wert => Liste der piaTS-Einträge, die genau dieses VCT
+ * in ihrem can_issue-Feld führen. can_issue kann ein einzelnes Objekt
+ * {vct: "..."} ODER ein Array mehrerer solcher Objekte sein (siehe
+ * formatCanIssueCell) — beide Formen werden hier berücksichtigt.
+ */
+function buildIssuersByVct(array $piaTsEntries): array
+{
+    $map = [];
+    foreach ($piaTsEntries as $entry) {
+        $canIssue = $entry['can_issue'] ?? null;
+        if (!is_array($canIssue)) {
+            continue;
+        }
+        $items = array_key_exists('vct', $canIssue) ? [$canIssue] : $canIssue;
+
+        $vcts = [];
+        foreach ($items as $item) {
+            if (is_array($item) && isset($item['vct'])) {
+                $vcts[] = (string) $item['vct'];
+            }
+        }
+        foreach (array_unique($vcts) as $vct) {
+            $map[$vct][] = $entry;
+        }
+    }
+    return $map;
+}
+
+/**
+ * Reichert piTLS-Einträge (scalar_list: ['value' => <VCT>]) um
+ * '_issuer_count' und '_issuers' (die vollständigen piaTS-Einträge, für die
+ * aufklappbare Detailansicht) an — nachgeschlagen über $sourceApiKey
+ * (piaTS) derselben Umgebung. Nutzt deren Session-Cache, löst also KEINEN
+ * zusätzlichen API-Call aus, wenn piaTS schon geladen war.
+ */
+function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, string $sourceApiKey, array $allApis, int $ttl): array
+{
+    if (!isset($allApis[$sourceApiKey])) {
+        foreach ($entries as &$entry) {
+            $entry['_issuer_count'] = 0;
+            $entry['_issuers'] = [];
+        }
+        return $entries;
+    }
+
+    try {
+        $source = getEntriesCached($envKey, $sourceApiKey, $baseUrl, $allApis[$sourceApiKey], false, $ttl, $allApis);
+        $byVct = buildIssuersByVct($source['entries']);
+    } catch (Throwable) {
+        $byVct = [];
+    }
+
+    foreach ($entries as &$entry) {
+        $vct = $entry['value'] ?? null;
+        $issuers = ($vct !== null && isset($byVct[$vct])) ? $byVct[$vct] : [];
+        $entry['_issuer_count'] = count($issuers);
+        $entry['_issuers'] = $issuers;
+    }
+    unset($entry);
+
+    return $entries;
+}
+
+/**
  * Holt ALLE Einträge einer API (über alle Seiten hinweg, falls paginiert).
  *
  * @param array $allApis Die komplette 'apis'-Config — wird nur gebraucht, wenn
@@ -280,6 +344,10 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
 
         if (!empty($apiCfg['enrich_name_from'])) {
             $entries = attachEntityNames($entries, $envKey, $baseUrl, $apiCfg['enrich_name_from'], $allApis, $ttl, $apiCfg['enrich_did_field'] ?? 'sub');
+        }
+
+        if (!empty($apiCfg['issuer_count_from'])) {
+            $entries = attachIssuerCounts($entries, $envKey, $baseUrl, $apiCfg['issuer_count_from'], $allApis, $ttl);
         }
 
         $listMeta = null;
@@ -708,6 +776,71 @@ function formatCanIssueCell(array $entry): string
 }
 
 /**
+ * Rendert die "Amount of allowed issuers"-Zelle einer piTLS-Zeile: bei 0
+ * Issuers nur Text ("0 Issuer", nicht klickbar), sonst ein Link ("X
+ * Issuer(s)"), der direkt zur piaTS-Ansicht springt, vorgefiltert per
+ * Suchbegriff auf das VCT (nutzt die bestehende Volltextsuche — kein
+ * eigener Filter-Mechanismus nötig). $envKey/$targetApiKey bauen den Link,
+ * 'onclick="event.stopPropagation()"' verhindert, dass der Klick zusätzlich
+ * das Aufklappen der Zeile auslöst (siehe Option A: Klick auf die Zeile
+ * selbst klappt die Issuer-Liste inline auf).
+ */
+function formatIssuerCountCell(array $entry, string $envKey, string $targetApiKey): string
+{
+    $count = (int) ($entry['_issuer_count'] ?? 0);
+    $label = match (true) {
+        $count === 0 => '0 Issuer',
+        $count === 1 => '1 Issuer',
+        default => $count . ' Issuers',
+    };
+
+    if ($count === 0) {
+        return '<span class="issuer-count issuer-count-zero">' . htmlspecialchars($label) . '</span>';
+    }
+
+    $vct = (string) ($entry['value'] ?? '');
+    $url = '?' . http_build_query(['env' => $envKey, 'api' => $targetApiKey, 'q' => $vct]);
+
+    return '<a href="' . htmlspecialchars($url) . '" class="issuer-count-link" onclick="event.stopPropagation()">'
+        . htmlspecialchars($label) . '</a>';
+}
+
+/**
+ * Rendert die aufgeklappte Issuer-Liste eines piTLS-Eintrags (siehe
+ * attachIssuerCounts): DID, Name (aus idTS), Status und Validity je
+ * piaTS-Issuer — dieselben Formatter wie in der piaTS-Tabelle selbst,
+ * damit die Darstellung konsistent bleibt.
+ */
+function renderIssuerList(array $issuers): string
+{
+    if ($issuers === []) {
+        return '<p class="detail-empty">No issuers found for this VCT.</p>';
+    }
+
+    // In einen .table-scroll-Wrapper (wie die Haupttabellen) UND bewusst NICHT
+    // vom generischen Mobile-"Tabelle wird Kartenliste"-Umbau erfasst (siehe
+    // CSS-Ausnahme für table.issuer-table in index.php) -- eine 4-spaltige
+    // Liste ohne data-label-Attribute würde dort unbeschriftet zerlaufen.
+    $html = '<div class="table-scroll"><table class="issuer-table"><thead><tr>'
+        . '<th>DID</th><th>Name (from idTS)</th><th>Status</th><th>Validity</th>'
+        . '</tr></thead><tbody>';
+
+    foreach ($issuers as $issuer) {
+        $did  = htmlspecialchars((string) ($issuer['sub'] ?? '-'));
+        $name = htmlspecialchars((string) ($issuer['_entity_name'] ?? '-'));
+        $html .= '<tr>'
+            . '<td class="cell-did">' . $did . '</td>'
+            . '<td>' . $name . '</td>'
+            . '<td>' . formatStatusBadgeCell($issuer) . '</td>'
+            . '<td>' . formatValidityBadgeCell($issuer) . '</td>'
+            . '</tr>';
+    }
+
+    $html .= '</tbody></table></div>';
+    return $html;
+}
+
+/**
  * Berechnet (rein clientseitig aus nbf/exp, KEIN API-Call) ob ein Eintrag
  * aktuell gültig ist: "not yet valid" | "valid" | "expired". Für APIs ohne
  * eigene status_list-Referenz (z.B. vqPS), im Unterschied zu
@@ -891,6 +1024,7 @@ function getSortValue(array $entry, array $col): int|float|string
         'validity_badge' => mb_strtolower(computeValidity($entry['nbf'] ?? null, $entry['exp'] ?? null)['label']),
         'vct_values' => mb_strtolower(strip_tags(formatVctValuesCell($entry))),
         'can_issue' => mb_strtolower(strip_tags(formatCanIssueCell($entry))),
+        'issuer_count' => (int) ($entry['_issuer_count'] ?? 0),
         'list' => (function () use ($entry, $col) {
             $v = getPath($entry, $col['key']);
             return mb_strtolower(is_array($v) ? implode(', ', $v) : (string) $v);
@@ -910,7 +1044,7 @@ function getSortValue(array $entry, array $col): int|float|string
  */
 function sortEntries(array $entries, array $col, string $dir): array
 {
-    $isNumeric = in_array($col['type'], ['unix', 'iso', 'raw_bool'], true);
+    $isNumeric = in_array($col['type'], ['unix', 'iso', 'raw_bool', 'issuer_count'], true);
 
     usort($entries, function ($a, $b) use ($col, $isNumeric) {
         $va = getSortValue($a, $col);
