@@ -306,6 +306,15 @@ if ($showPagination) {
     .list-meta-tile .lbl .info-icon { margin-left: 5px; }
     .info-icon-cell { display: none; } /* auf Desktop reicht das Icon im Spaltenkopf; sichtbar gemacht im Mobile-Media-Query unten */
 
+    /* ---- piTLS: "Amount of allowed issuers" (Zahl + aufklappbare Issuer-Liste) ---- */
+    .issuer-count-link { color: #0b5fa5; font-weight: bold; text-decoration: none; }
+    .issuer-count-link:hover { text-decoration: underline; }
+    .issuer-count-zero { color: #999; }
+    table.issuer-table { width: 100%; border-collapse: collapse; background: #fff; }
+    table.issuer-table th, table.issuer-table td { border: 1px solid #ddd; padding: 7px 10px; font-size: 12px; text-align: left; }
+    table.issuer-table th { background: #f2f2f2; white-space: nowrap; }
+    table.issuer-table td.cell-did { font-family: monospace; font-size: 11px; word-break: break-all; max-width: 220px; }
+
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
         body { margin: 0.75em; }
@@ -355,6 +364,17 @@ if ($showPagination) {
         /* thead (und damit das Spaltenkopf-Info-Icon) ist hier ausgeblendet
            -- stattdessen das Icon direkt in der Zelle neben dem Badge zeigen. */
         .info-icon-cell { display: inline-flex; }
+
+        /* Issuer-Liste (piTLS-Detailansicht) bewusst von der generischen
+           "Tabelle wird Kartenliste"-Regel ausnehmen -- sie hat keine
+           data-label-Attribute und würde sonst unbeschriftet zerlaufen.
+           Bleibt stattdessen eine normale (horizontal scrollbare) Tabelle. */
+        table.issuer-table { display: table; width: 100%; }
+        table.issuer-table thead { display: table-header-group; }
+        table.issuer-table tbody { display: table-row-group; }
+        table.issuer-table tr { display: table-row; }
+        table.issuer-table th, table.issuer-table td { display: table-cell; width: auto; }
+        table.issuer-table td.cell-did { max-width: none; }
 
         .pagination { justify-content: center; }
         .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
@@ -591,6 +611,8 @@ if ($showPagination) {
                                     <?= formatCanIssueCell($entry) ?>
                                 <?php elseif ($col['type'] === 'validity_badge'): ?>
                                     <?= formatValidityBadgeCell($entry) ?> <?= renderInfoIcon('validity', true) ?>
+                                <?php elseif ($col['type'] === 'issuer_count'): ?>
+                                    <?= formatIssuerCountCell($entry, $envKey, $apiCfg['issuer_count_from'] ?? 'piaTS') ?>
                                 <?php else: ?>
                                     <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
                                 <?php endif; ?>
@@ -599,7 +621,13 @@ if ($showPagination) {
                     </tr>
                     <?php if ($isExpandable): ?>
                         <tr class="detail-row">
-                            <td colspan="<?= $columnCount ?>"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></td>
+                            <td colspan="<?= $columnCount ?>">
+                                <?php if (!empty($apiCfg['issuer_count_from'])): ?>
+                                    <?= renderIssuerList($entry['_issuers'] ?? []) ?>
+                                <?php else: ?>
+                                    <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?>
+                                <?php endif; ?>
+                            </td>
                         </tr>
                     <?php endif; ?>
                 <?php endforeach; ?>
