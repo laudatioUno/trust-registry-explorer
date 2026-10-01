@@ -1,0 +1,107 @@
+/*
+ * Gemeinsame Farb-Tokens für Light/Dark Mode — von index.php und history.php
+ * per <link> eingebunden. Neue Töne nur HIER anpassen, nicht in den
+ * einzelnen Seiten (die referenzieren ausschliesslich var(--token)).
+ *
+ * Reihenfolge der Geltung (wie vom Browser ausgewertet):
+ *   1. :root                                    -> Light-Werte (Default)
+ *   2. @media (prefers-color-scheme: dark)       -> Dark-Werte, WENN der User
+ *      :root:not([data-theme="light"])             nicht explizit "hell" gewählt hat
+ *   3. :root[data-theme="dark"]                  -> Dark-Werte, WENN der User
+ *                                                    explizit "dunkel" gewählt hat
+ * data-theme wird von assets/theme.js gesetzt (System-Erkennung + manueller
+ * Umschalter, persistiert in localStorage).
+ */
+
+:root {
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --border: #ddd;
+    --border-soft: #e5e5e5;
+    --text: #222222;
+    --text-2: #555555;
+    --text-3: #888888;
+    /* --accent: Text/Link/Outline-Ton (muss auf --bg/--surface lesbar sein).
+       --accent-fill: Hintergrund gefüllter Buttons/aktiver Zustände (bleibt in
+       beiden Themes dunkel genug für weissen Text) + --on-accent als dessen
+       Textfarbe. Getrennt von --accent, weil ein im Dark Mode aufgehellter
+       Akzentton als Button-Füllung zu wenig Kontrast zu weisser Schrift hätte. */
+    --accent: #0b5fa5;
+    --accent-fill: #0b5fa5;
+    --accent-fill-hover: #094a82;
+    --on-accent: #ffffff;
+    --accent-soft: #e6f1fb;
+    --accent-soft-2: #eaf2fa;
+    --table-head: #f2f2f2;
+    --table-head-2: #f7f9fb;
+    --success-bg: #e2f3e6; --success-text: #1e7d34;
+    --error-bg: #fdecea;   --error-text: #a12622; --error-border: #f5c2c0;
+    --warning-bg: #fdf3e2; --warning-text: #a1651f;
+    --neutral-bg: #eeeeee; --neutral-text: #666666;
+    --tooltip-bg: #222222; --tooltip-text: #ffffff;
+    /* Chart.js-Palette (10 Kurvenfarben), light */
+    --chart-palette: #0b5fa5, #1e7d34, #a1651f, #a12622, #7a4fb5, #0f9aa8, #c2185b, #5d6d7e, #e08e0b, #2e8b8b;
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #14181d;
+        --surface: #1c222a;
+        --border: #333c47;
+        --border-soft: #2a313a;
+        --text: #e8eaed;
+        --text-2: #b8bfc7;
+        --text-3: #7c8591;
+        --accent: #5aa9e6;
+        --accent-fill: #1a6fb0;
+        --accent-fill-hover: #2480c2;
+        --on-accent: #ffffff;
+        --accent-soft: #1b3a52;
+        --accent-soft-2: #203f58;
+        --table-head: #232a33;
+        --table-head-2: #1f2730;
+        --success-bg: #16301f; --success-text: #6bdb87;
+        --error-bg: #3a1f1d;   --error-text: #f0948e; --error-border: #5c2e2a;
+        --warning-bg: #3a2c10; --warning-text: #e8b84b;
+        --neutral-bg: #2a2f36; --neutral-text: #aab1ba;
+        --tooltip-bg: #f0f2f5; --tooltip-text: #14181d;
+        --chart-palette: #5aa9e6, #6bdb87, #e8b84b, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
+        color-scheme: dark;
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #14181d;
+    --surface: #1c222a;
+    --border: #333c47;
+    --border-soft: #2a313a;
+    --text: #e8eaed;
+    --text-2: #b8bfc7;
+    --text-3: #7c8591;
+    --accent: #5aa9e6;
+    --accent-fill: #1a6fb0;
+    --accent-fill-hover: #2480c2;
+    --on-accent: #ffffff;
+    --accent-soft: #1b3a52;
+    --accent-soft-2: #203f58;
+    --table-head: #232a33;
+    --table-head-2: #1f2730;
+    --success-bg: #16301f; --success-text: #6bdb87;
+    --error-bg: #3a1f1d;   --error-text: #f0948e; --error-border: #5c2e2a;
+    --warning-bg: #3a2c10; --warning-text: #e8b84b;
+    --neutral-bg: #2a2f36; --neutral-text: #aab1ba;
+    --tooltip-bg: #f0f2f5; --tooltip-text: #14181d;
+    --chart-palette: #5aa9e6, #6bdb87, #e8b84b, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
+    color-scheme: dark;
+}
+
+/* Toggle-Button: gleiche Pill-Reihe wie .top-nav a, aber quadratisch (Icon only) */
+.theme-toggle {
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+    width: 40px; padding: 6px; font-size: 16px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 20px;
+    background: var(--surface); color: var(--text-2);
+    cursor: pointer; font-family: inherit;
+}
+.theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
