@@ -173,9 +173,11 @@ if ($showPagination) {
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
     .page-header h1 { margin: 0; }
-    .top-nav { display: flex; gap: 6px; }
-    .top-nav a { padding: 6px 16px; font-size: 13px; border: 1px solid #ccc; border-radius: 20px; text-decoration: none; color: #444; background: #fff; }
+    .top-nav { display: flex; gap: 6px; align-items: stretch; }
+    .top-nav a { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 6px 16px; font-size: 13px; border: 1px solid #ccc; border-radius: 20px; text-decoration: none; color: #444; background: #fff; box-sizing: border-box; }
     .top-nav a.active { background: #0b5fa5; border-color: #0b5fa5; color: #fff; font-weight: bold; }
+    .top-nav a.docs-link { color: #0b5fa5; border-color: #cfe0f0; }
+    .top-nav a.docs-link:hover { background: #eaf2fa; }
 
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid #ccc; margin-bottom: 16px; }
     .tabs a { padding: 8px 18px; font-size: 14px; text-decoration: none; color: #555; border-bottom: 3px solid transparent; }
@@ -211,11 +213,30 @@ if ($showPagination) {
     .api-chips small { color: #888; margin-left: 4px; }
 
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
-    .toolbar .url { font-family: monospace; font-size: 12px; color: #0b5fa5; word-break: break-all; text-decoration: none; }
+    /* URL bricht auf max. 2 Zeilen um; würde eine 3. Zeile nötig, wird mit "…"
+       abgeschnitten statt weiter umzubrechen oder horizontal zu scrollen. */
+    .toolbar .url {
+        font-family: monospace; font-size: 12px; color: #0b5fa5; text-decoration: none;
+        word-break: break-all;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden; text-overflow: ellipsis;
+        flex: 1 1 260px; min-width: 0;
+    }
     .toolbar .url:hover { text-decoration: underline; }
+    .toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
     .toolbar form { display: flex; gap: 6px; }
     .toolbar input[type=text] { padding: 6px 10px; font-size: 13px; border: 1px solid #ccc; border-radius: 4px; min-width: 220px; }
-    .toolbar button, .refresh-btn { padding: 6px 14px; font-size: 13px; border: 1px solid #0b5fa5; background: #0b5fa5; color: #fff; border-radius: 4px; cursor: pointer; text-decoration: none; }
+    .toolbar button { padding: 6px 14px; font-size: 13px; border: 1px solid #0b5fa5; background: #0b5fa5; color: #fff; border-radius: 4px; cursor: pointer; }
+    /* Refresh- und Spec-Button teilen sich dieselbe Basis -> immer exakt gleich gross */
+    .toolbar-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 6px 14px; font-size: 13px; border-radius: 4px; border: 1px solid #0b5fa5;
+        text-decoration: none; white-space: nowrap; box-sizing: border-box; line-height: 1.4;
+    }
+    .toolbar-btn.refresh-btn { background: #0b5fa5; color: #fff; }
+    .toolbar-btn.refresh-btn:hover { background: #094a82; }
+    .toolbar-btn.spec-btn { background: #fff; color: #0b5fa5; }
+    .toolbar-btn.spec-btn:hover { background: #eaf2fa; }
 
     .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
     table { border-collapse: collapse; width: 100%; background: #fff; }
@@ -331,8 +352,7 @@ if ($showPagination) {
         .api-chips small { display: none; } /* Beschreibung spart Platz, Kürzel reicht auf Mobile */
 
         .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
-        .toolbar .url { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .toolbar > div { justify-content: space-between; }
+        .toolbar-actions { justify-content: space-between; }
         .toolbar form { flex: 1; }
         .toolbar input[type=text] { flex: 1; min-width: 0; }
 
@@ -389,6 +409,7 @@ if ($showPagination) {
     <div class="top-nav">
         <a href="index.php" class="active">Explorer</a>
         <a href="history.php">History</a>
+        <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
     </div>
 </div>
 
@@ -490,11 +511,15 @@ if ($showPagination) {
 
 <?php else: ?>
 
-    <?php $fullUrl = $config['environments'][$envKey]['base_url'] . $config['apis'][$apiKey]['path']; ?>
+    <?php
+    $fullUrl      = $config['environments'][$envKey]['base_url'] . $config['apis'][$apiKey]['path'];
+    $cacheMinutes = (int) round($config['cache_ttl'] / 60);
+    $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
+    ?>
 
     <div class="toolbar">
         <a class="url" href="<?= htmlspecialchars($fullUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($fullUrl) ?></a>
-        <div style="display:flex; gap:8px; align-items:center;">
+        <div class="toolbar-actions">
             <form method="get">
                 <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                 <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
@@ -506,7 +531,10 @@ if ($showPagination) {
                     <button type="submit">Suchen</button>
                 <?php endif; ?>
             </form>
-            <a class="refresh-btn" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Abfragen</a>
+            <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Refresh</a>
+            <?php if ($specUrl !== null): ?>
+                <a class="toolbar-btn spec-btn" href="<?= htmlspecialchars($specUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($apiKey) ?> API Spec ↗</a>
+            <?php endif; ?>
         </div>
     </div>
 
