@@ -47,6 +47,7 @@ return [
                 ['key' => '_status_value',  'label' => 'Status',           'type' => 'status_badge'],
                 ['key' => 'validity',       'label' => 'Validity',         'type' => 'validity_badge'],
             ],
+            'doc_url'     => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#identity-trust-statement-idts',
         ],
 
         'ncTLS' => [
@@ -72,6 +73,7 @@ return [
                 ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',       'type' => 'text'],
                 ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',       'type' => 'text'],
             ],
+            'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#non-compliance-trust-list-statement-nctls',
         ],
 
         'piTLS' => [
@@ -94,6 +96,7 @@ return [
                 ['key' => 'value',         'label' => 'VCT-Wert',                   'type' => 'text'],
                 ['key' => '_issuer_count', 'label' => 'Amount of allowed issuers',  'type' => 'issuer_count'],
             ],
+            'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-trust-list-statement-pitls',
         ],
 
         'vqPS' => [
@@ -114,6 +117,7 @@ return [
                 ['key' => 'iat',          'label' => 'Issued At',        'type' => 'unix'],
                 ['key' => 'validity',     'label' => 'Validity',         'type' => 'validity_badge'],
             ],
+            'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#verification-query-public-statement-vqps',
         ],
 
         'piaTS' => [
@@ -134,6 +138,7 @@ return [
                 ['key' => '_status_value','label' => 'Status (from Statuslist)', 'type' => 'status_badge'],
                 ['key' => 'validity',     'label' => 'Validity',              'type' => 'validity_badge'],
             ],
+            'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-authorization-trust-statement-piats',
         ],
 
         'pvaTS' => [
@@ -154,6 +159,7 @@ return [
                 ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],
                 ['key' => 'validity',          'label' => 'Validity',            'type' => 'validity_badge'],
             ],
+            'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-verification-authorization-trust-statement-pvats',
         ],
 
     ],
@@ -166,8 +172,15 @@ return [
     'page_size_options' => [20, 50, 100, 200],
 
     // Wie lange der Session-Cache pro Umgebung+API gültig ist, bevor
-    // ohne expliziten "Abfragen"-Klick automatisch neu geladen wird (Sekunden)
+    // ohne expliziten "Refresh"-Klick automatisch neu geladen wird (Sekunden)
     'cache_ttl' => 300,
+
+    // Dokumentations-Links: generischer Overview-Link (im Seitenkopf, API-
+    // unabhängig) sowie pro API ein 'doc_url' (siehe oben bei den APIs),
+    // der als "Spec"-Button in der Toolbar neben "Refresh" erscheint.
+    'docs' => [
+        'overview_url' => 'https://swiyu-admin-ch.github.io/introduction/#trust-in-the-swiyu-ecosystem',
+    ],
 
     // History-Feature: Ablage der nächtlich per Cronjob (collect.php)
     // gesammelten Trust-Statement-Zählungen (SQLite, filebasiert).
