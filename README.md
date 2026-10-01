@@ -14,9 +14,11 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Global DID search** — search a single DID across all six APIs at once and see every place it appears, with the entity name (from idTS) shown up front if available
 - **Responsive UI** — full table on desktop, stacked card view on mobile, same underlying data and markup
 - **Config-driven** — add a new environment or API by editing `config.php`, no other code changes needed
-- **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle
+- **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle. Chart.js is vendored locally (`assets/chart.umd.min.js`) — no CDN dependency, works on hosts without outbound access to third-party script CDNs
+- **Dark mode** — follows the OS/browser color scheme by default; a toggle (🌙/☀️, top right on both pages) lets you override it, remembered across visits. Covers the Explorer, the History page, and the History chart's colors (axes, grid, curves)
 
 ## Screenshot
+
 ![Alternativtext](screenshot-home.png)
 
 ## Requirements
@@ -28,7 +30,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Setup
 
-1. Copy `config.php`, `functions.php`, and `index.php` into the same directory on your web server (or run locally, see below).
+1. Copy `config.php`, `functions.php`, `index.php`, `history.php`, `collect.php`, the `assets/` folder, and the `storage/` folder (with its `.gitkeep`) into the same directory on your web server (or run locally, see below).
 2. Point your web server's document root at that directory, or run it locally for a quick test:
 
    ```bash
@@ -49,7 +51,7 @@ without it — but to see any data in the History chart:
 2. Schedule `collect.php` to run once a night, e.g. via crontab:
 
    ```
-   0 23 * * * php /path/to/project/collect.php >> /path/to/project/storage/collect.log 2>&1
+   0 23 * * * php /path/to/project/collect.php
    ```
 
    `collect.php` is CLI-only (it refuses to run through the web server). It
@@ -59,6 +61,12 @@ without it — but to see any data in the History chart:
    per run in `storage/history.sqlite`. A failed query is stored as an
    explicit error row (not a zero), so a bad night shows up as a gap in the
    chart rather than a misleading drop.
+
+   The script writes its own log to `storage/collect.log` (resolved via
+   `__DIR__`, not via shell redirection), so it works reliably even on
+   hosting panels/schedulers whose working directory isn't the project
+   folder. A `>> .../collect.log 2>&1` redirect on the cron line is
+   harmless but no longer necessary.
 3. After a couple of nightly runs, open `history.php`, pick a time range and
    the environment/API curves you want to compare.
 
@@ -113,6 +121,9 @@ Three files, each with a single responsibility:
 | `index.php` | The UI: environment tabs, API selector, DID search bar, table/card rendering, pagination |
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
+| `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
+| `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color |
+| `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to |
 
 Fetched and decoded entries are cached per environment+API in the PHP session for `cache_ttl` seconds, so paging and searching don't repeatedly hit the upstream API. The "Query" button forces an immediate refresh.
 
