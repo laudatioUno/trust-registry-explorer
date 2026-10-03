@@ -142,12 +142,18 @@
     85%, 100% { transform: scale(1); opacity: 1; }
 }
 .tre-spinner .tre-bar { fill: var(--accent); animation: tre-bar-pulse 1.5s ease-in-out infinite; }
-.tre-spinner .tre-bar:nth-of-type(1) { animation-delay: 0s; }
-.tre-spinner .tre-bar:nth-of-type(2) { animation-delay: .18s; }
-.tre-spinner .tre-bar:nth-of-type(3) { animation-delay: .36s; }
+/* Feste Klassen statt :nth-of-type, damit die Zuordnung Balken->Delay in
+   jedem Browser eindeutig ist. */
+.tre-spinner .tre-bar-1 { animation-delay: 0s; }
+.tre-spinner .tre-bar-2 { animation-delay: .18s; }
+.tre-spinner .tre-bar-3 { animation-delay: .36s; }
 .tre-spinner .tre-seal-group {
     animation: tre-seal-pop 1.5s ease-in-out infinite;
-    transform-box: fill-box; transform-origin: center;
+    /* Explizite Koordinaten (Siegel-Mittelpunkt im 100x100-viewBox) statt
+       transform-box:fill-box + center - Safari berechnet die fill-box-Mitte
+       für ein <g> mit Kind-Elementen nicht immer zuverlässig. */
+    transform-box: view-box;
+    transform-origin: 76px 74px;
 }
 .tre-spinner .tre-seal { fill: var(--accent-2); }
 .tre-spinner .tre-check { stroke: var(--on-accent-2); }
@@ -155,17 +161,28 @@
     .tre-spinner .tre-bar, .tre-spinner .tre-seal-group { animation: none; opacity: 1; transform: scale(1); }
 }
 
-/* Dezenter Lade-Overlay über dem jeweiligen Inhaltsbereich (Tabelle/Chart).
- * Wird von theme.js ein-/ausgeblendet (TrustExplorer.attachLoadingOverlay). */
+/* Dezenter Lade-Banner, oben an den Ergebnisbereich (Tabelle/Chart) angepinnt
+ * - nicht mittig über der ganzen (u.U. langen) Tabelle, sondern genau dort,
+ * wo die Tabelle beginnt. Wird von theme.js ein-/ausgeblendet
+ * (TrustExplorer.attachLoadingOverlay). Bleibt layout-technisch IMMER ein
+ * flex-Container (nur über visibility/opacity versteckt, nie via
+ * display:none) - Safari startet eine CSS-Animation auf einem Kind sonst
+ * nicht zuverlässig neu, wenn der Container erst im Moment des Einblendens
+ * von display:none auf sichtbar wechselt. */
 .tre-loading-host { position: relative; }
 .tre-loading-overlay {
-    position: absolute; inset: 0;
-    display: none;
-    align-items: center; justify-content: center; gap: 12px;
-    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex;
+    align-items: center; justify-content: center; gap: 10px;
+    padding: 16px;
+    background: color-mix(in srgb, var(--surface) 90%, transparent);
     backdrop-filter: blur(1px);
     z-index: 5;
-    border-radius: 8px;
+    border-radius: 8px 8px 0 0;
     font-size: 13px; color: var(--text-2);
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .12s ease;
 }
-.tre-loading-overlay.is-visible { display: flex; }
+.tre-loading-overlay.is-visible { visibility: visible; opacity: 1; pointer-events: auto; }
