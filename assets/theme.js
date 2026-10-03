@@ -95,4 +95,42 @@
             }
         });
     }
+
+    /*
+     * Dezenter Lade-Spinner über dem Tabellen-/Chart-Bereich.
+     *
+     * Die App ist komplett serverseitig gerendert (kein AJAX) - jeder Klick
+     * auf einen Tab/Link/Button bzw. jedes Formular-Submit löst einen echten
+     * Seiten-Reload aus. Der Overlay blendet sich daher nur EIN (nie wieder
+     * aus) unmittelbar bevor die Navigation/das Submit greift; die neue
+     * Seite ersetzt ihn danach ohnehin komplett. Das deckt z.B. den Wechsel
+     * auf eine API mit 1500+ Einträgen (vqPS) ab, bei dem das Rendern ein
+     * paar Sekunden dauert.
+     *
+     * Aufruf je Seite: TrustExplorer.attachLoadingOverlay('overlayId', [sel, ...])
+     */
+    window.TrustExplorer = window.TrustExplorer || {};
+    window.TrustExplorer.attachLoadingOverlay = function (overlayId, selectors) {
+        var overlay = document.getElementById(overlayId);
+        if (!overlay) return;
+
+        function show() {
+            overlay.classList.add('is-visible');
+        }
+
+        document.querySelectorAll(selectors.join(', ')).forEach(function (el) {
+            if (el.tagName === 'A') {
+                // Externe/neue-Tab-Links lösen keinen Seiten-Reload *hier* aus.
+                if (el.target === '_blank' || el.hasAttribute('download')) return;
+                el.addEventListener('click', show);
+            } else if (el.tagName === 'FORM') {
+                el.addEventListener('submit', show);
+            } else {
+                // z.B. <select onchange="this.form.submit()"> oder ein Button,
+                // der selbst kein <form>/<a> ist, aber ein Submit auslöst.
+                el.addEventListener('change', show);
+                el.addEventListener('click', show);
+            }
+        });
+    };
 })();
