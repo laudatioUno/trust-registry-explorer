@@ -281,6 +281,25 @@ try {
     </div>
 </form>
 
+<?php /* Lade-Overlay liegt IMMER im DOM (auch vor der ersten Auswahl/dem
+         ersten "Anzeigen"-Klick), sonst findet das allererste Submit noch
+         kein Element zum Anzeigen - siehe TrustExplorer.attachLoadingOverlay.
+         Oben an den Ergebnisbereich angepinnt, nicht mittig über dem ganzen
+         Chart. */ ?>
+<div class="tre-loading-host">
+<div class="tre-loading-overlay" id="chartLoadingOverlay">
+    <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
+        <rect class="tre-bar tre-bar-1" x="12" y="14" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-2" x="12" y="40" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-3" x="12" y="66" width="48" height="16" rx="6"></rect>
+        <g class="tre-seal-group">
+            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
+            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+    </svg>
+    <span>Lädt&hellip;</span>
+</div>
+
 <?php if ($dbError !== null): ?>
 
     <div class="error">Fehler beim Zugriff auf die History-Datenbank: <?= htmlspecialchars($dbError) ?></div>
@@ -291,22 +310,8 @@ try {
 
 <?php else: ?>
 
-    <div class="tre-loading-host">
-        <div class="tre-loading-overlay" id="chartLoadingOverlay">
-            <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
-                <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
-                <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
-                <rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>
-                <g class="tre-seal-group">
-                    <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
-                    <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
-                </g>
-            </svg>
-            <span>Lädt&hellip;</span>
-        </div>
-        <div class="chart-wrap">
-            <canvas id="historyChart" height="90"></canvas>
-        </div>
+    <div class="chart-wrap">
+        <canvas id="historyChart" height="90"></canvas>
     </div>
     <p class="meta">
         Zeitraum: <?= htmlspecialchars($rangeOptions[$rangeKey]) ?>
@@ -319,6 +324,7 @@ try {
     <?php endif; ?>
 
 <?php endif; ?>
+</div>
 
 <script>
 var form = document.getElementById('historyForm');

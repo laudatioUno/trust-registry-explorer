@@ -521,6 +521,25 @@ if ($showPagination) {
     <?php endforeach; ?>
 </div>
 
+<?php /* Lade-Overlay liegt IMMER im DOM (auch bevor eine API gewählt ist),
+         sonst findet der erste Klick auf einen API-Chip noch kein Element
+         zum Anzeigen - siehe TrustExplorer.attachLoadingOverlay. Oben an
+         den Ergebnisbereich angepinnt, nicht mittig über der ganzen
+         (u.U. langen) Tabelle. */ ?>
+<div class="tre-loading-host">
+<div class="tre-loading-overlay" id="tableLoadingOverlay">
+    <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
+        <rect class="tre-bar tre-bar-1" x="12" y="14" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-2" x="12" y="40" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-3" x="12" y="66" width="48" height="16" rx="6"></rect>
+        <g class="tre-seal-group">
+            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
+            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+    </svg>
+    <span>Lädt&hellip;</span>
+</div>
+
 <?php if ($apiKey === null): ?>
 
     <p style="color:var(--text-3);">Bitte oben eine Umgebung und eine API auswählen.</p>
@@ -604,19 +623,6 @@ if ($showPagination) {
 
     <?php else: ?>
 
-        <div class="tre-loading-host">
-        <div class="tre-loading-overlay" id="tableLoadingOverlay">
-            <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
-                <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
-                <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
-                <rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>
-                <g class="tre-seal-group">
-                    <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
-                    <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
-                </g>
-            </svg>
-            <span>Lädt&hellip;</span>
-        </div>
         <div class="table-scroll">
         <table>
             <thead>
@@ -747,7 +753,6 @@ if ($showPagination) {
                 </form>
             <?php endif; ?>
         </div>
-        </div>
 
         <p class="meta">
             <?= $totalFiltered ?> Einträge<?= $query !== '' ? " (gefiltert aus $fetchedCount)" : '' ?>
@@ -759,6 +764,7 @@ if ($showPagination) {
     <?php endif; ?>
 
 <?php endif; ?>
+</div>
 
 <script>
 document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
