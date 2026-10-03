@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Trust Registry Explorer Logo">
+  <rect x="12" y="14" width="76" height="16" rx="6" fill="#0F6B72"/>
+  <rect x="12" y="40" width="76" height="16" rx="6" fill="#0F6B72"/>
+  <rect x="12" y="66" width="48" height="16" rx="6" fill="#0F6B72"/>
+  <circle cx="76" cy="74" r="20" fill="#D9A62B"/>
+  <path d="M67 74 L74 81 L87 66" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
