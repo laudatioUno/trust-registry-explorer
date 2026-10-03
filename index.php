@@ -167,6 +167,9 @@ if ($showPagination) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Swiyu Trust Registry Explorer</title>
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="assets/favicon.ico">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/theme.css">
 <script src="assets/theme.js"></script>
 <style>
@@ -175,6 +178,7 @@ if ($showPagination) {
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
     .page-header h1 { margin: 0; }
+    .page-header .brand { display: flex; align-items: center; gap: 10px; }
     .top-nav { display: flex; gap: 6px; align-items: stretch; }
     .top-nav a { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 6px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 20px; text-decoration: none; color: var(--text-2); background: var(--surface); box-sizing: border-box; }
     .top-nav a.active { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
@@ -407,7 +411,16 @@ if ($showPagination) {
 <body>
 
 <div class="page-header">
-    <h1>Swiyu Trust Registry Explorer</h1>
+    <div class="brand">
+        <svg class="tre-logo" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">
+            <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
+            <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
+            <rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>
+            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
+            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        <h1>Swiyu Trust Registry Explorer</h1>
+    </div>
     <div class="top-nav">
         <a href="index.php" class="active">Explorer</a>
         <a href="history.php">History</a>
@@ -591,6 +604,19 @@ if ($showPagination) {
 
     <?php else: ?>
 
+        <div class="tre-loading-host">
+        <div class="tre-loading-overlay" id="tableLoadingOverlay">
+            <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
+                <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
+                <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
+                <rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>
+                <g class="tre-seal-group">
+                    <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
+                    <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+                </g>
+            </svg>
+            <span>Lädt&hellip;</span>
+        </div>
         <div class="table-scroll">
         <table>
             <thead>
@@ -721,6 +747,7 @@ if ($showPagination) {
                 </form>
             <?php endif; ?>
         </div>
+        </div>
 
         <p class="meta">
             <?= $totalFiltered ?> Einträge<?= $query !== '' ? " (gefiltert aus $fetchedCount)" : '' ?>
@@ -758,6 +785,21 @@ document.querySelectorAll('.info-icon').forEach(function (icon) {
 document.addEventListener('click', function () {
     document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
 });
+
+// Lade-Spinner über der Tabelle: bei allem, was einen Seiten-Reload mit neu
+// berechneter Tabelle auslöst (Umgebung/API wechseln, suchen, sortieren,
+// paginieren, Refresh) - spürbar z.B. bei vqPS mit 1500+ Einträgen.
+TrustExplorer.attachLoadingOverlay('tableLoadingOverlay', [
+    '.tabs a',
+    '.api-chips a',
+    '.toolbar form',
+    '.toolbar-btn.refresh-btn',
+    '.sort-link',
+    '.pagination a',
+    '.page-size-form select',
+    '.page-jump-form',
+    '.did-search form',
+]);
 </script>
 
 </body>

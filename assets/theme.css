@@ -25,13 +25,22 @@
        --accent-fill: Hintergrund gefüllter Buttons/aktiver Zustände (bleibt in
        beiden Themes dunkel genug für weissen Text) + --on-accent als dessen
        Textfarbe. Getrennt von --accent, weil ein im Dark Mode aufgehellter
-       Akzentton als Button-Füllung zu wenig Kontrast zu weisser Schrift hätte. */
-    --accent: #0b5fa5;
-    --accent-fill: #0b5fa5;
-    --accent-fill-hover: #094a82;
+       Akzentton als Button-Füllung zu wenig Kontrast zu weisser Schrift hätte.
+       Markenfarben (Logo/Favicon/Spinner, Round 2 des Logo-Brainstorms):
+       Petrol (--accent) & Gold (--accent-2) statt generischem Blau. */
+    --accent: #0F6B72;
+    --accent-fill: #0F6B72;
+    --accent-fill-hover: #0c5459;
     --on-accent: #ffffff;
-    --accent-soft: #e6f1fb;
-    --accent-soft-2: #eaf2fa;
+    --accent-soft: #e3eeee;
+    --accent-soft-2: #edf5f4;
+    /* --accent-2: die zweite Markenfarbe (Gold). Nur für gezielte Akzente
+       (Logo-Siegel, Spinner, "empfohlen"/Highlight-Badges) - nicht als
+       Ersatz für --accent in Links/aktiven Zuständen gedacht. */
+    --accent-2: #D9A62B;
+    --accent-2-fill: #D9A62B;
+    --on-accent-2: #241c05;
+    --accent-2-soft: #faf1da;
     --table-head: #f2f2f2;
     --table-head-2: #f7f9fb;
     --success-bg: #e2f3e6; --success-text: #1e7d34;
@@ -39,8 +48,9 @@
     --warning-bg: #fdf3e2; --warning-text: #a1651f;
     --neutral-bg: #eeeeee; --neutral-text: #666666;
     --tooltip-bg: #222222; --tooltip-text: #ffffff;
-    /* Chart.js-Palette (10 Kurvenfarben), light */
-    --chart-palette: #0b5fa5, #1e7d34, #a1651f, #a12622, #7a4fb5, #0f9aa8, #c2185b, #5d6d7e, #e08e0b, #2e8b8b;
+    /* Chart.js-Palette (10 Kurvenfarben), light. Erste zwei Töne = Markenfarben,
+       Rest bleibt divers (gut unterscheidbare Kurven bei Mehrfachauswahl). */
+    --chart-palette: #0F6B72, #D9A62B, #1e7d34, #a12622, #7a4fb5, #0f9aa8, #c2185b, #5d6d7e, #e08e0b, #2e8b8b;
     color-scheme: light;
 }
 
@@ -53,12 +63,16 @@
         --text: #e8eaed;
         --text-2: #b8bfc7;
         --text-3: #7c8591;
-        --accent: #5aa9e6;
-        --accent-fill: #1a6fb0;
-        --accent-fill-hover: #2480c2;
+        --accent: #4FB8AE;
+        --accent-fill: #14807a;
+        --accent-fill-hover: #1a948c;
         --on-accent: #ffffff;
-        --accent-soft: #1b3a52;
-        --accent-soft-2: #203f58;
+        --accent-soft: #1b3a3a;
+        --accent-soft-2: #203f3e;
+        --accent-2: #E8B93E;
+        --accent-2-fill: #E8B93E;
+        --on-accent-2: #241c05;
+        --accent-2-soft: #3a3012;
         --table-head: #232a33;
         --table-head-2: #1f2730;
         --success-bg: #16301f; --success-text: #6bdb87;
@@ -66,7 +80,7 @@
         --warning-bg: #3a2c10; --warning-text: #e8b84b;
         --neutral-bg: #2a2f36; --neutral-text: #aab1ba;
         --tooltip-bg: #f0f2f5; --tooltip-text: #14181d;
-        --chart-palette: #5aa9e6, #6bdb87, #e8b84b, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
+        --chart-palette: #4FB8AE, #E8B93E, #6bdb87, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
         color-scheme: dark;
     }
 }
@@ -79,12 +93,16 @@
     --text: #e8eaed;
     --text-2: #b8bfc7;
     --text-3: #7c8591;
-    --accent: #5aa9e6;
-    --accent-fill: #1a6fb0;
-    --accent-fill-hover: #2480c2;
+    --accent: #4FB8AE;
+    --accent-fill: #14807a;
+    --accent-fill-hover: #1a948c;
     --on-accent: #ffffff;
-    --accent-soft: #1b3a52;
-    --accent-soft-2: #203f58;
+    --accent-soft: #1b3a3a;
+    --accent-soft-2: #203f3e;
+    --accent-2: #E8B93E;
+    --accent-2-fill: #E8B93E;
+    --on-accent-2: #241c05;
+    --accent-2-soft: #3a3012;
     --table-head: #232a33;
     --table-head-2: #1f2730;
     --success-bg: #16301f; --success-text: #6bdb87;
@@ -92,7 +110,7 @@
     --warning-bg: #3a2c10; --warning-text: #e8b84b;
     --neutral-bg: #2a2f36; --neutral-text: #aab1ba;
     --tooltip-bg: #f0f2f5; --tooltip-text: #14181d;
-    --chart-palette: #5aa9e6, #6bdb87, #e8b84b, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
+    --chart-palette: #4FB8AE, #E8B93E, #6bdb87, #f0948e, #b79af0, #4fd0dd, #f06fa0, #9aa7b5, #f0a94a, #5fc9c9;
     color-scheme: dark;
 }
 
@@ -105,3 +123,49 @@
     cursor: pointer; font-family: inherit;
 }
 .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ---------------------------------------------------------------------
+ * Logo (statisch, im Header) & Spinner (animiert, beim Laden).
+ * Beide zeichnen dasselbe "Registry-Stapel"-Motiv, gefüllt über
+ * var(--accent)/var(--accent-2) - zieht Theme-Wechsel automatisch mit.
+ * --------------------------------------------------------------------- */
+.tre-logo { flex-shrink: 0; }
+.tre-logo .tre-bar { fill: var(--accent); }
+.tre-logo .tre-seal { fill: var(--accent-2); }
+.tre-logo .tre-check { stroke: var(--on-accent-2); }
+
+@keyframes tre-bar-pulse { 0%, 100% { opacity: .22; } 50% { opacity: 1; } }
+@keyframes tre-seal-pop {
+    0%, 40%  { transform: scale(0.55); opacity: 0; }
+    55%      { transform: scale(1.18); opacity: 1; }
+    72%      { transform: scale(0.92); }
+    85%, 100% { transform: scale(1); opacity: 1; }
+}
+.tre-spinner .tre-bar { fill: var(--accent); animation: tre-bar-pulse 1.5s ease-in-out infinite; }
+.tre-spinner .tre-bar:nth-of-type(1) { animation-delay: 0s; }
+.tre-spinner .tre-bar:nth-of-type(2) { animation-delay: .18s; }
+.tre-spinner .tre-bar:nth-of-type(3) { animation-delay: .36s; }
+.tre-spinner .tre-seal-group {
+    animation: tre-seal-pop 1.5s ease-in-out infinite;
+    transform-box: fill-box; transform-origin: center;
+}
+.tre-spinner .tre-seal { fill: var(--accent-2); }
+.tre-spinner .tre-check { stroke: var(--on-accent-2); }
+@media (prefers-reduced-motion: reduce) {
+    .tre-spinner .tre-bar, .tre-spinner .tre-seal-group { animation: none; opacity: 1; transform: scale(1); }
+}
+
+/* Dezenter Lade-Overlay über dem jeweiligen Inhaltsbereich (Tabelle/Chart).
+ * Wird von theme.js ein-/ausgeblendet (TrustExplorer.attachLoadingOverlay). */
+.tre-loading-host { position: relative; }
+.tre-loading-overlay {
+    position: absolute; inset: 0;
+    display: none;
+    align-items: center; justify-content: center; gap: 12px;
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    backdrop-filter: blur(1px);
+    z-index: 5;
+    border-radius: 8px;
+    font-size: 13px; color: var(--text-2);
+}
+.tre-loading-overlay.is-visible { display: flex; }
