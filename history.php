@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
 
+require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
 $dbPath       = $config['history']['db_path'] ?? __DIR__ . '/storage/history.sqlite';
-$rangeOptions = $config['history']['range_options'] ?? ['7d' => 'Letzte 7 Tage'];
+$rangeOptions = $config['history']['range_options'] ?? ['7d' => t('range.7d')];
 
 // ---- Parameter aus der URL lesen ----
 
@@ -132,7 +133,7 @@ try {
 
 ?>
 <!DOCTYPE html>
-<html lang="de">
+<html lang="<?= htmlspecialchars(currentLang()) ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -207,7 +208,12 @@ try {
         <a href="index.php">Explorer</a>
         <a href="history.php" class="active">History</a>
         <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
-        <button type="button" class="theme-toggle" id="themeToggle" aria-label="Theme wechseln">🌙</button>
+        <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
+            <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
+            <a href="<?= htmlspecialchars(langSwitchUrl('en')) ?>" class="lang-btn<?= currentLang() === 'en' ? ' active' : '' ?>">EN</a>
+            <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
+        </div>
+        <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
     </div>
 </div>
 
@@ -215,7 +221,7 @@ try {
     <input type="hidden" name="series" id="seriesInput" value="<?= htmlspecialchars(implode(',', array_map(static fn ($s) => $s['env'] . ':' . $s['api'], $selectedSeries))) ?>">
 
     <div class="history-toolbar">
-        <label>Zeitraum
+        <label><?= htmlspecialchars(t('history.range_label')) ?>
             <select name="range" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
                 <?php foreach ($rangeOptions as $key => $label): ?>
                     <option value="<?= htmlspecialchars($key) ?>" <?= $key === $rangeKey ? 'selected' : '' ?>><?= htmlspecialchars($label) ?></option>
@@ -224,18 +230,18 @@ try {
         </label>
 
         <?php if ($rangeKey === 'custom'): ?>
-            <label>Von
+            <label><?= htmlspecialchars(t('history.from')) ?>
                 <input type="date" name="from" value="<?= htmlspecialchars($customFrom) ?>">
             </label>
-            <label>Bis
+            <label><?= htmlspecialchars(t('history.to')) ?>
                 <input type="date" name="to" value="<?= htmlspecialchars($customTo) ?>">
             </label>
         <?php endif; ?>
 
-        <label>Skala
+        <label><?= htmlspecialchars(t('history.scale_label')) ?>
             <select name="scale" onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
-                <option value="log" <?= $scale === 'log' ? 'selected' : '' ?>>Logarithmisch</option>
-                <option value="linear" <?= $scale === 'linear' ? 'selected' : '' ?>>Linear</option>
+                <option value="log" <?= $scale === 'log' ? 'selected' : '' ?>><?= htmlspecialchars(t('history.scale_log')) ?></option>
+                <option value="linear" <?= $scale === 'linear' ? 'selected' : '' ?>><?= htmlspecialchars(t('history.scale_linear')) ?></option>
             </select>
         </label>
     </div>
@@ -268,15 +274,15 @@ try {
         </table>
 
         <div class="series-quick-actions">
-            <span style="font-size:11px; color:var(--text-3);">Auswählen:</span>
+            <span style="font-size:11px; color:var(--text-3);"><?= htmlspecialchars(t('history.select_label')) ?></span>
             <?php foreach ($config['environments'] as $envKey => $env): ?>
-                <button type="button" class="quick-btn" onclick="toggleRow('<?= htmlspecialchars($envKey) ?>')">Alle <?= htmlspecialchars($env['label']) ?></button>
+                <button type="button" class="quick-btn" onclick="toggleRow('<?= htmlspecialchars($envKey) ?>')"><?= htmlspecialchars(t('history.all_x', [$env['label']])) ?></button>
             <?php endforeach; ?>
             <?php foreach ($config['apis'] as $apiKey => $api): ?>
-                <button type="button" class="quick-btn" onclick="toggleCol('<?= htmlspecialchars($apiKey) ?>')">Alle <?= htmlspecialchars($api['label']) ?></button>
+                <button type="button" class="quick-btn" onclick="toggleCol('<?= htmlspecialchars($apiKey) ?>')"><?= htmlspecialchars(t('history.all_x', [$api['label']])) ?></button>
             <?php endforeach; ?>
-            <button type="button" class="quick-btn quick-btn-clear" onclick="toggleAll(false)">Alle abwählen</button>
-            <button type="submit" class="apply-btn">Anzeigen</button>
+            <button type="button" class="quick-btn quick-btn-clear" onclick="toggleAll(false)"><?= htmlspecialchars(t('history.deselect_all')) ?></button>
+            <button type="submit" class="apply-btn"><?= htmlspecialchars(t('history.apply')) ?></button>
         </div>
     </div>
 </form>
@@ -297,16 +303,16 @@ try {
             <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
         </g>
     </svg>
-    <span>Lädt&hellip;</span>
+    <span><?= htmlspecialchars(t('common.loading')) ?></span>
 </div>
 
 <?php if ($dbError !== null): ?>
 
-    <div class="error">Fehler beim Zugriff auf die History-Datenbank: <?= htmlspecialchars($dbError) ?></div>
+    <div class="error"><?= htmlspecialchars(t('history.db_error', [$dbError])) ?></div>
 
 <?php elseif ($selectedSeries === []): ?>
 
-    <p style="color:var(--text-3);">Bitte oben mindestens eine Kombination aus Umgebung und API auswählen und auf "Anzeigen" klicken.</p>
+    <p style="color:var(--text-3);"><?= htmlspecialchars(t('history.select_prompt')) ?></p>
 
 <?php else: ?>
 
@@ -314,13 +320,13 @@ try {
         <canvas id="historyChart" height="90"></canvas>
     </div>
     <p class="meta">
-        Zeitraum: <?= htmlspecialchars($rangeOptions[$rangeKey]) ?>
-        &middot; <?= count($chartSeries) ?> Kurve(n)
-        &middot; <?= array_sum(array_map(static fn ($s) => $s['pointCount'], $chartSeries)) ?> Datenpunkte insgesamt
+        <?= htmlspecialchars(t('history.meta_range', [$rangeOptions[$rangeKey]])) ?>
+        &middot; <?= htmlspecialchars(t('history.meta_curves', [count($chartSeries)])) ?>
+        &middot; <?= htmlspecialchars(t('history.meta_points', [array_sum(array_map(static fn ($s) => $s['pointCount'], $chartSeries))])) ?>
     </p>
     <?php $totalErrors = array_sum(array_map(static fn ($s) => $s['errorCount'], $chartSeries)); ?>
     <?php if ($totalErrors > 0): ?>
-        <p class="series-error-note"><?= $totalErrors ?> fehlgeschlagene(r) Collector-Lauf/Läufe im gewählten Zeitraum (im Chart als Lücke sichtbar).</p>
+        <p class="series-error-note"><?= htmlspecialchars(t('history.collector_errors', [$totalErrors])) ?></p>
     <?php endif; ?>
 
 <?php endif; ?>
@@ -398,13 +404,13 @@ var historyChart = new Chart(document.getElementById('historyChart'), {
         interaction: { mode: 'nearest', axis: 'x', intersect: false },
         scales: {
             x: {
-                title: { display: true, text: 'Zeit', color: chartColors.text },
+                title: { display: true, text: <?= json_encode(t('chart.axis_time'), JSON_THROW_ON_ERROR) ?>, color: chartColors.text },
                 ticks: { autoSkip: true, maxRotation: 60, minRotation: 0, color: chartColors.text },
                 grid: { color: chartColors.grid },
             },
             y: {
                 type: '<?= $scale === 'log' ? 'logarithmic' : 'linear' ?>',
-                title: { display: true, text: 'Anzahl Trust Statements', color: chartColors.text },
+                title: { display: true, text: <?= json_encode(t('chart.axis_count'), JSON_THROW_ON_ERROR) ?>, color: chartColors.text },
                 beginAtZero: <?= $scale === 'linear' ? 'true' : 'false' ?>,
                 ticks: { color: chartColors.text },
                 grid: { color: chartColors.grid },
