@@ -124,6 +124,22 @@
 }
 .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Sprach-Umschalter: gleiche Pill-Reihe, zwei Segmente in einem gemeinsamen
+   abgerundeten Rahmen statt zweier separater Pills. */
+.lang-switch {
+    display: inline-flex; align-items: stretch;
+    border: 1px solid var(--border); border-radius: 20px; overflow: hidden;
+    box-sizing: border-box; height: 32px;
+}
+.lang-btn {
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+    padding: 0 10px; font-size: 12px; font-weight: 600; letter-spacing: .02em;
+    text-decoration: none; color: var(--text-2); background: var(--surface);
+}
+.lang-btn:not(:last-child) { border-right: 1px solid var(--border); }
+.lang-btn:hover:not(.active) { color: var(--accent); }
+.lang-btn.active { background: var(--accent-fill); color: var(--on-accent); }
+
 /* ---------------------------------------------------------------------
  * Logo (statisch, im Header) & Spinner (animiert, beim Laden).
  * Beide zeichnen dasselbe "Registry-Stapel"-Motiv, gefüllt über
