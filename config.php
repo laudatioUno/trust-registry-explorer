@@ -15,6 +15,13 @@
  *   - 'iso'   = ISO-8601 Zeitstring, wird in Europe/Zurich lesbar formatiert
  *   - 'list'  = Array von Strings, wird kommagetrennt dargestellt
  *   - 'text'  = Default, wird als String dargestellt
+ *
+ * Spaltentitel/Beschreibungen, die bereits rein englisch/technisch sind
+ * (z.B. "Status", "DID", API-Beschreibungen), stehen hier direkt als Literal
+ * — identisch in beiden Sprachen, kein Übersetzungs-Key nötig. Nur die
+ * tatsächlich deutschen Originaltexte laufen über t() (siehe lang.php).
+ * Setzt voraus, dass i18n.php VOR dieser Datei geladen wurde (index.php/
+ * history.php tun das bereits als allerersten Require).
  */
 
 return [
@@ -66,12 +73,12 @@ return [
             'columns'           => [
                 ['key' => 'actor',        'label' => 'Actor (DID)',      'type' => 'text', 'class' => 'cell-did'],
                 ['key' => '_entity_name', 'label' => 'Name (from idTS)', 'type' => 'text'],
-                ['key' => 'flagged_at',   'label' => 'Geflaggt am',      'type' => 'iso'],
-                ['key' => 'reason#de-CH', 'label' => 'Grund (DE)',       'type' => 'text'],
-                ['key' => 'reason#en',    'label' => 'Grund (EN)',       'type' => 'text'],
-                ['key' => 'reason#fr-CH', 'label' => 'Grund (FR)',       'type' => 'text'],
-                ['key' => 'reason#it-CH', 'label' => 'Grund (IT)',       'type' => 'text'],
-                ['key' => 'reason#rm-CH', 'label' => 'Grund (RM)',       'type' => 'text'],
+                ['key' => 'flagged_at',   'label' => t('col.flagged_at'), 'type' => 'iso'],
+                ['key' => 'reason#de-CH', 'label' => t('col.reason_de'), 'type' => 'text'],
+                ['key' => 'reason#en',    'label' => t('col.reason_en'), 'type' => 'text'],
+                ['key' => 'reason#fr-CH', 'label' => t('col.reason_fr'), 'type' => 'text'],
+                ['key' => 'reason#it-CH', 'label' => t('col.reason_it'), 'type' => 'text'],
+                ['key' => 'reason#rm-CH', 'label' => t('col.reason_rm'), 'type' => 'text'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#non-compliance-trust-list-statement-nctls',
         ],
@@ -93,7 +100,7 @@ return [
             'expandable'        => true,
             'issuer_count_from' => 'piaTS',
             'columns'     => [
-                ['key' => 'value',         'label' => 'VCT-Wert',                   'type' => 'text'],
+                ['key' => 'value',         'label' => t('col.vct_value'),           'type' => 'text'],
                 ['key' => '_issuer_count', 'label' => 'Amount of allowed issuers',  'type' => 'issuer_count'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-trust-list-statement-pitls',
@@ -193,12 +200,12 @@ return [
         // Zeitraum-Presets für die History-Ansicht (Dropdown), Schlüssel
         // 'custom' schaltet die Von/Bis-Datumsfelder frei.
         'range_options' => [
-            '7d'     => 'Letzte 7 Tage',
-            '30d'    => 'Letzte 30 Tage',
-            '90d'    => 'Letzte 90 Tage',
-            '1y'     => 'Letztes Jahr',
-            'all'    => 'Alle Daten',
-            'custom' => 'Benutzerdefiniert',
+            '7d'     => t('range.7d'),
+            '30d'    => t('range.30d'),
+            '90d'    => t('range.90d'),
+            '1y'     => t('range.1y'),
+            'all'    => t('range.all'),
+            'custom' => t('range.custom'),
         ],
     ],
 ];

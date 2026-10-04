@@ -1,0 +1,302 @@
+<?php
+/**
+ * Übersetzungswörterbuch fürs UI (DE/EN/FR). Ein Key pro Textbaustein, pro
+ * Sprache ein Wert. Platzhalter folgen sprintf-Syntax (%s, %d) und werden
+ * von t() per vsprintf() eingesetzt (siehe i18n.php).
+ *
+ * Neue Sprache hinzufügen: einfach einen weiteren Top-Level-Key mit denselben
+ * Keys ergänzen und in i18n.php's I18N_SUPPORTED eintragen. Fehlt ein Key in
+ * einer Sprache, fällt t() automatisch auf Englisch zurück.
+ */
+
+return [
+
+    'de' => [
+        // Navigation / Header
+        'nav.theme_toggle_aria' => 'Theme wechseln',
+        'nav.lang_toggle_aria'  => 'Sprache wechseln',
+
+        // DID-Suche (index.php)
+        'search.did_placeholder' => 'DID durchsuchen (über alle APIs)…',
+        'search.hint'             => 'Durchsucht alle Trust Statements der gewählten Umgebung nach dem eingegebenen Begriff (z.B. eine DID).',
+        'search.entity_label'     => 'Entität laut idTS',
+        'search.hit_singular'     => 'Treffer',
+        'search.hit_plural'       => 'Treffer',
+        'search.hit_n'            => 'Treffer %d',
+
+        // Gemeinsame Begriffe
+        'common.search_button' => 'Suchen',
+        'common.error'         => 'Fehler',
+        'common.loading'       => 'Lädt…',
+        'common.status'        => 'Status',
+        'common.validity'      => 'Validity',
+
+        // Explorer (index.php)
+        'explorer.select_prompt' => 'Bitte oben eine Umgebung und eine API auswählen.',
+        'explorer.fetch_error'   => 'Fehler beim Abrufen/Dekodieren: %s',
+        'toolbar.search_placeholder' => 'Suchen…',
+
+        // Gültigkeits-/Statuspanel einer Trust-List
+        'listmeta.hint'               => 'Gültigkeit dieser Trust-List (gilt für die gesamte Liste)',
+        'listmeta.valid_from'         => 'Gültig ab (nbf)',
+        'listmeta.valid_until'        => 'Gültig bis (exp)',
+        'listmeta.created_at'         => 'Erstellt am (iat)',
+        'listmeta.status_unavailable' => 'Status nicht abrufbar (%s)',
+
+        // Tabelle & Pagination
+        'table.no_entries'    => 'Keine Einträge gefunden.',
+        'pagination.per_page' => 'Pro Seite',
+        'pagination.first'    => 'Erste Seite',
+        'pagination.prev'     => 'Vorherige Seite',
+        'pagination.next'     => 'Nächste Seite',
+        'pagination.last'     => 'Letzte Seite',
+        'pagination.page'     => 'Seite',
+        'pagination.of'       => 'von',
+        'meta.entries'        => '%d Einträge',
+        'meta.filtered_from'  => '(gefiltert aus %d)',
+        'meta.showing'        => 'zeige %d–%d',
+
+        // History-Seite
+        'history.range_label'      => 'Zeitraum',
+        'history.from'             => 'Von',
+        'history.to'               => 'Bis',
+        'history.scale_label'      => 'Skala',
+        'history.scale_log'        => 'Logarithmisch',
+        'history.scale_linear'     => 'Linear',
+        'history.select_label'     => 'Auswählen:',
+        'history.all_x'            => 'Alle %s',
+        'history.deselect_all'     => 'Alle abwählen',
+        'history.apply'            => 'Anzeigen',
+        'history.db_error'         => 'Fehler beim Zugriff auf die History-Datenbank: %s',
+        'history.select_prompt'    => 'Bitte oben mindestens eine Kombination aus Umgebung und API auswählen und auf "Anzeigen" klicken.',
+        'history.meta_range'       => 'Zeitraum: %s',
+        'history.meta_curves'      => '%d Kurve(n)',
+        'history.meta_points'      => '%d Datenpunkte insgesamt',
+        'history.collector_errors' => '%d fehlgeschlagene(r) Collector-Lauf/Läufe im gewählten Zeitraum (im Chart als Lücke sichtbar).',
+        'chart.axis_time'          => 'Zeit',
+        'chart.axis_count'         => 'Anzahl Trust Statements',
+
+        // Spaltentitel (config.php) — nur die tatsächlich deutschen; rein
+        // englische/technische Spaltentitel sind in beiden Sprachen identisch
+        // und direkt in config.php hinterlegt (kein Key nötig).
+        'col.flagged_at' => 'Geflaggt am',
+        'col.reason_de'  => 'Grund (DE)',
+        'col.reason_en'  => 'Grund (EN)',
+        'col.reason_fr'  => 'Grund (FR)',
+        'col.reason_it'  => 'Grund (IT)',
+        'col.reason_rm'  => 'Grund (RM)',
+        'col.vct_value'  => 'VCT-Wert',
+
+        // Zeitraum-Presets (config.php 'history.range_options')
+        'range.7d'     => 'Letzte 7 Tage',
+        'range.30d'    => 'Letzte 30 Tage',
+        'range.90d'    => 'Letzte 90 Tage',
+        'range.1y'     => 'Letztes Jahr',
+        'range.all'    => 'Alle Daten',
+        'range.custom' => 'Benutzerdefiniert',
+
+        // Statuswerte / Detailansicht / Fehlermeldungen (functions.php)
+        'issuers.none_found'           => 'Keine Issuer für diesen VCT gefunden.',
+        'validity.not_yet_valid'       => 'noch nicht gültig',
+        'validity.expired'             => 'abgelaufen',
+        'validity.valid'               => 'gültig',
+        'status.unavailable'           => 'nicht abrufbar',
+        'cell.empty'                   => '(leer)',
+        'detail.jwt_header'            => 'JWT-Header',
+        'detail.payload_full'          => 'Payload (vollständig)',
+        'error.invalid_jwt'            => 'Ungültiges JWT-Format.',
+        'error.curl'                   => 'cURL-Fehler (%d): %s',
+        'error.http_status'            => 'Unerwarteter HTTP-Status: %d für %s',
+        'error.empty_response'         => 'Leere Antwort von der API.',
+        'error.status_list_missing'    => 'status_list-Feld fehlt in der Antwort',
+        'error.status_list_decompress' => 'Statusliste konnte nicht entpackt werden',
+        'error.status_list_index_oob'  => 'Index ausserhalb der Statusliste',
+        'error.history_dir'            => 'Konnte Verzeichnis für History-DB nicht anlegen: %s',
+        'error.unknown_api_mode'       => 'Unbekannter API-Modus: %s',
+    ],
+
+    'en' => [
+        'nav.theme_toggle_aria' => 'Switch theme',
+        'nav.lang_toggle_aria'  => 'Switch language',
+
+        'search.did_placeholder' => 'Search DID (across all APIs)…',
+        'search.hint'             => 'Searches all Trust Statements in the selected environment for the entered term (e.g. a DID).',
+        'search.entity_label'     => 'Entity per idTS',
+        'search.hit_singular'     => 'hit',
+        'search.hit_plural'       => 'hits',
+        'search.hit_n'            => 'Match %d',
+
+        'common.search_button' => 'Search',
+        'common.error'         => 'Error',
+        'common.loading'       => 'Loading…',
+        'common.status'        => 'Status',
+        'common.validity'      => 'Validity',
+
+        'explorer.select_prompt' => 'Please select an environment and an API above.',
+        'explorer.fetch_error'   => 'Error fetching/decoding: %s',
+        'toolbar.search_placeholder' => 'Search…',
+
+        'listmeta.hint'               => 'Validity of this trust list (applies to the entire list)',
+        'listmeta.valid_from'         => 'Valid from (nbf)',
+        'listmeta.valid_until'        => 'Valid until (exp)',
+        'listmeta.created_at'         => 'Created at (iat)',
+        'listmeta.status_unavailable' => 'Status unavailable (%s)',
+
+        'table.no_entries'    => 'No entries found.',
+        'pagination.per_page' => 'Per page',
+        'pagination.first'    => 'First page',
+        'pagination.prev'     => 'Previous page',
+        'pagination.next'     => 'Next page',
+        'pagination.last'     => 'Last page',
+        'pagination.page'     => 'Page',
+        'pagination.of'       => 'of',
+        'meta.entries'        => '%d entries',
+        'meta.filtered_from'  => '(filtered from %d)',
+        'meta.showing'        => 'showing %d–%d',
+
+        'history.range_label'      => 'Time range',
+        'history.from'             => 'From',
+        'history.to'               => 'To',
+        'history.scale_label'      => 'Scale',
+        'history.scale_log'        => 'Logarithmic',
+        'history.scale_linear'     => 'Linear',
+        'history.select_label'     => 'Select:',
+        'history.all_x'            => 'All %s',
+        'history.deselect_all'     => 'Deselect all',
+        'history.apply'            => 'Show',
+        'history.db_error'         => 'Error accessing the History database: %s',
+        'history.select_prompt'    => 'Please select at least one environment/API combination above and click "Show".',
+        'history.meta_range'       => 'Time range: %s',
+        'history.meta_curves'      => '%d curve(s)',
+        'history.meta_points'      => '%d data points total',
+        'history.collector_errors' => '%d failed collector run(s) in the selected time range (shown as a gap in the chart).',
+        'chart.axis_time'          => 'Time',
+        'chart.axis_count'         => 'Number of Trust Statements',
+
+        'col.flagged_at' => 'Flagged At',
+        'col.reason_de'  => 'Reason (DE)',
+        'col.reason_en'  => 'Reason (EN)',
+        'col.reason_fr'  => 'Reason (FR)',
+        'col.reason_it'  => 'Reason (IT)',
+        'col.reason_rm'  => 'Reason (RM)',
+        'col.vct_value'  => 'VCT Value',
+
+        'range.7d'     => 'Last 7 days',
+        'range.30d'    => 'Last 30 days',
+        'range.90d'    => 'Last 90 days',
+        'range.1y'     => 'Last year',
+        'range.all'    => 'All data',
+        'range.custom' => 'Custom',
+
+        'issuers.none_found'           => 'No issuers found for this VCT.',
+        'validity.not_yet_valid'       => 'not yet valid',
+        'validity.expired'             => 'expired',
+        'validity.valid'               => 'valid',
+        'status.unavailable'           => 'not available',
+        'cell.empty'                   => '(empty)',
+        'detail.jwt_header'            => 'JWT Header',
+        'detail.payload_full'          => 'Payload (complete)',
+        'error.invalid_jwt'            => 'Invalid JWT format.',
+        'error.curl'                   => 'cURL error (%d): %s',
+        'error.http_status'            => 'Unexpected HTTP status: %d for %s',
+        'error.empty_response'         => 'Empty response from the API.',
+        'error.status_list_missing'    => 'status_list field missing in the response',
+        'error.status_list_decompress' => 'Status list could not be decompressed',
+        'error.status_list_index_oob'  => 'Index outside the status list',
+        'error.history_dir'            => 'Could not create directory for the History DB: %s',
+        'error.unknown_api_mode'       => 'Unknown API mode: %s',
+    ],
+
+    'fr' => [
+        'nav.theme_toggle_aria' => 'Changer de thème',
+        'nav.lang_toggle_aria'  => 'Changer de langue',
+
+        'search.did_placeholder' => 'Rechercher un DID (dans toutes les API)…',
+        'search.hint'             => 'Recherche le terme saisi (p. ex. un DID) dans tous les Trust Statements de l\'environnement sélectionné.',
+        'search.entity_label'     => 'Entité selon idTS',
+        'search.hit_singular'     => 'résultat',
+        'search.hit_plural'       => 'résultats',
+        'search.hit_n'            => 'Résultat %d',
+
+        'common.search_button' => 'Rechercher',
+        'common.error'         => 'Erreur',
+        'common.loading'       => 'Chargement…',
+        'common.status'        => 'Statut',
+        'common.validity'      => 'Validité',
+
+        'explorer.select_prompt' => 'Veuillez sélectionner un environnement et une API ci-dessus.',
+        'explorer.fetch_error'   => 'Erreur lors de la récupération/du décodage : %s',
+        'toolbar.search_placeholder' => 'Rechercher…',
+
+        'listmeta.hint'               => 'Validité de cette trust list (s\'applique à la liste entière)',
+        'listmeta.valid_from'         => 'Valide à partir de (nbf)',
+        'listmeta.valid_until'        => 'Valide jusqu\'à (exp)',
+        'listmeta.created_at'         => 'Créé le (iat)',
+        'listmeta.status_unavailable' => 'Statut indisponible (%s)',
+
+        'table.no_entries'    => 'Aucune entrée trouvée.',
+        'pagination.per_page' => 'Par page',
+        'pagination.first'    => 'Première page',
+        'pagination.prev'     => 'Page précédente',
+        'pagination.next'     => 'Page suivante',
+        'pagination.last'     => 'Dernière page',
+        'pagination.page'     => 'Page',
+        'pagination.of'       => 'sur',
+        'meta.entries'        => '%d entrées',
+        'meta.filtered_from'  => '(filtré depuis %d)',
+        'meta.showing'        => 'affichage %d–%d',
+
+        'history.range_label'      => 'Période',
+        'history.from'             => 'De',
+        'history.to'               => 'À',
+        'history.scale_label'      => 'Échelle',
+        'history.scale_log'        => 'Logarithmique',
+        'history.scale_linear'     => 'Linéaire',
+        'history.select_label'     => 'Sélectionner :',
+        'history.all_x'            => 'Tous : %s',
+        'history.deselect_all'     => 'Tout désélectionner',
+        'history.apply'            => 'Afficher',
+        'history.db_error'         => 'Erreur d\'accès à la base de données History : %s',
+        'history.select_prompt'    => 'Veuillez sélectionner au moins une combinaison environnement/API ci-dessus et cliquer sur « Afficher ».',
+        'history.meta_range'       => 'Période : %s',
+        'history.meta_curves'      => '%d courbe(s)',
+        'history.meta_points'      => '%d points de données au total',
+        'history.collector_errors' => '%d exécution(s) du collecteur ayant échoué dans la période sélectionnée (visible comme un espace vide dans le graphique).',
+        'chart.axis_time'          => 'Temps',
+        'chart.axis_count'         => 'Nombre de Trust Statements',
+
+        'col.flagged_at' => 'Signalé le',
+        'col.reason_de'  => 'Motif (DE)',
+        'col.reason_en'  => 'Motif (EN)',
+        'col.reason_fr'  => 'Motif (FR)',
+        'col.reason_it'  => 'Motif (IT)',
+        'col.reason_rm'  => 'Motif (RM)',
+        'col.vct_value'  => 'Valeur VCT',
+
+        'range.7d'     => '7 derniers jours',
+        'range.30d'    => '30 derniers jours',
+        'range.90d'    => '90 derniers jours',
+        'range.1y'     => 'Dernière année',
+        'range.all'    => 'Toutes les données',
+        'range.custom' => 'Personnalisé',
+
+        'issuers.none_found'           => 'Aucun émetteur trouvé pour ce VCT.',
+        'validity.not_yet_valid'       => 'pas encore valide',
+        'validity.expired'             => 'expiré',
+        'validity.valid'               => 'valide',
+        'status.unavailable'           => 'indisponible',
+        'cell.empty'                   => '(vide)',
+        'detail.jwt_header'            => 'En-tête JWT',
+        'detail.payload_full'          => 'Payload (complet)',
+        'error.invalid_jwt'            => 'Format JWT invalide.',
+        'error.curl'                   => 'Erreur cURL (%d) : %s',
+        'error.http_status'            => 'Statut HTTP inattendu : %d pour %s',
+        'error.empty_response'         => 'Réponse vide de l\'API.',
+        'error.status_list_missing'    => 'Champ status_list manquant dans la réponse',
+        'error.status_list_decompress' => 'Impossible de décompresser la liste de statuts',
+        'error.status_list_index_oob'  => 'Index hors de la liste de statuts',
+        'error.history_dir'            => 'Impossible de créer le répertoire pour la base History : %s',
+        'error.unknown_api_mode'       => 'Mode API inconnu : %s',
+    ],
+
+];

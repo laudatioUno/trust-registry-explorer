@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
@@ -162,7 +163,7 @@ if ($showPagination) {
 
 ?>
 <!DOCTYPE html>
-<html lang="de">
+<html lang="<?= htmlspecialchars(currentLang()) ?>">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -425,7 +426,12 @@ if ($showPagination) {
         <a href="index.php" class="active">Explorer</a>
         <a href="history.php">History</a>
         <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
-        <button type="button" class="theme-toggle" id="themeToggle" aria-label="Theme wechseln">🌙</button>
+        <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
+            <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
+            <a href="<?= htmlspecialchars(langSwitchUrl('en')) ?>" class="lang-btn<?= currentLang() === 'en' ? ' active' : '' ?>">EN</a>
+            <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
+        </div>
+        <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
     </div>
 </div>
 
@@ -436,20 +442,20 @@ if ($showPagination) {
                 <input type="hidden" name="<?= htmlspecialchars($k) ?>" value="<?= htmlspecialchars((string) $v) ?>">
             <?php endif; ?>
         <?php endforeach; ?>
-        <input type="text" name="did" placeholder="DID durchsuchen (über alle APIs)..." value="<?= htmlspecialchars($didQuery) ?>">
+        <input type="text" name="did" placeholder="<?= htmlspecialchars(t('search.did_placeholder')) ?>" value="<?= htmlspecialchars($didQuery) ?>">
         <select name="did_env">
             <?php foreach ($config['environments'] as $key => $env): ?>
                 <option value="<?= htmlspecialchars($key) ?>" <?= $key === $didEnv ? 'selected' : '' ?>><?= htmlspecialchars($env['label']) ?></option>
             <?php endforeach; ?>
         </select>
-        <button type="submit">Suchen</button>
+        <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
     </form>
-    <p class="hint">Durchsucht alle Trust Statements der gewählten Umgebung nach dem eingegebenen Begriff (z.B. eine DID).</p>
+    <p class="hint"><?= htmlspecialchars(t('search.hint')) ?></p>
 
     <?php if ($didSearch !== null): ?>
         <?php if ($didSearch['entity_name'] !== null): ?>
             <div class="did-entity">
-                <span class="lbl">Entität laut idTS</span>
+                <span class="lbl"><?= htmlspecialchars(t('search.entity_label')) ?></span>
                 <span class="val"><?= htmlspecialchars($didSearch['entity_name']) ?></span>
             </div>
         <?php endif; ?>
@@ -464,9 +470,9 @@ if ($showPagination) {
                         <div class="did-card-head" onclick="this.nextElementSibling.classList.toggle('open')">
                             <span class="name"><?= htmlspecialchars($apiCfgIter['label']) ?> <small><?= htmlspecialchars($apiCfgIter['description']) ?></small></span>
                             <?php if ($r['error'] !== null): ?>
-                                <span class="did-error">Fehler</span>
+                                <span class="did-error"><?= htmlspecialchars(t('common.error')) ?></span>
                             <?php else: ?>
-                                <span class="did-badge"><?= $hitCount ?> Treffer</span>
+                                <span class="did-badge"><?= $hitCount ?> <?= htmlspecialchars(t($hitCount === 1 ? 'search.hit_singular' : 'search.hit_plural')) ?></span>
                             <?php endif; ?>
                         </div>
                         <div class="did-card-body">
@@ -474,7 +480,7 @@ if ($showPagination) {
                                 <p class="did-error"><?= htmlspecialchars($r['error']) ?></p>
                             <?php else: ?>
                                 <?php foreach ($r['entries'] as $i => $hit): ?>
-                                    <?php if ($hitCount > 1): ?><p class="did-hit-label">Treffer <?= $i + 1 ?></p><?php endif; ?>
+                                    <?php if ($hitCount > 1): ?><p class="did-hit-label"><?= htmlspecialchars(t('search.hit_n', [$i + 1])) ?></p><?php endif; ?>
                                     <?= renderEntryDetail($hit, $apiCfgIter['show_header'] ?? true) ?>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -496,7 +502,7 @@ if ($showPagination) {
                 <div class="did-card no-hit">
                     <div class="did-card-head">
                         <span class="name"><?= htmlspecialchars(implode(', ', $noHitLabels)) ?></span>
-                        <span class="did-badge" style="background:transparent;color:var(--text-3);">0 Treffer</span>
+                        <span class="did-badge" style="background:transparent;color:var(--text-3);">0 <?= htmlspecialchars(t('search.hit_plural')) ?></span>
                     </div>
                 </div>
             <?php endif; ?>
@@ -537,12 +543,12 @@ if ($showPagination) {
             <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
         </g>
     </svg>
-    <span>Lädt&hellip;</span>
+    <span><?= htmlspecialchars(t('common.loading')) ?></span>
 </div>
 
 <?php if ($apiKey === null): ?>
 
-    <p style="color:var(--text-3);">Bitte oben eine Umgebung und eine API auswählen.</p>
+    <p style="color:var(--text-3);"><?= htmlspecialchars(t('explorer.select_prompt')) ?></p>
 
 <?php else: ?>
 
@@ -562,8 +568,8 @@ if ($showPagination) {
                     <input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>">
                 <?php endif; ?>
                 <?php if ($totalFiltered > $pageSize || $fetchedCount > $pageSize): ?>
-                    <input type="text" name="q" placeholder="Suchen..." value="<?= htmlspecialchars($query) ?>">
-                    <button type="submit">Suchen</button>
+                    <input type="text" name="q" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
+                    <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
                 <?php endif; ?>
             </form>
             <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Refresh</a>
@@ -575,22 +581,22 @@ if ($showPagination) {
 
     <?php if ($listMeta !== null): ?>
         <div class="list-meta-panel">
-            <p class="hint">Gültigkeit dieser Trust-List (gilt für die gesamte Liste)</p>
+            <p class="hint"><?= htmlspecialchars(t('listmeta.hint')) ?></p>
             <div class="list-meta-grid">
                 <div class="list-meta-tile">
-                    <span class="lbl">Gültig ab (nbf)</span>
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_from')) ?></span>
                     <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['nbf'])) ?></span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Gültig bis (exp)</span>
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_until')) ?></span>
                     <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['exp'])) ?></span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Erstellt am (iat)</span>
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.created_at')) ?></span>
                     <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Status <?= renderInfoIcon('status') ?></span>
+                    <span class="lbl"><?= htmlspecialchars(t('common.status')) ?> <?= renderInfoIcon('status') ?></span>
                     <?php
                         $statusClass = match ($listMeta['status_value']) {
                             0 => 'status-valid',
@@ -604,7 +610,7 @@ if ($showPagination) {
                     </span>
                 </div>
                 <div class="list-meta-tile">
-                    <span class="lbl">Validity <?= renderInfoIcon('validity') ?></span>
+                    <span class="lbl"><?= htmlspecialchars(t('common.validity')) ?> <?= renderInfoIcon('validity') ?></span>
                     <?php $listMetaValidity = computeValidity($listMeta['nbf'], $listMeta['exp']); ?>
                     <span class="val">
                         <span class="status-badge <?= $listMetaValidity['class'] ?>"><?= htmlspecialchars($listMetaValidity['label']) ?></span>
@@ -612,14 +618,14 @@ if ($showPagination) {
                 </div>
             </div>
             <?php if ($listMeta['status_error'] !== null): ?>
-                <p class="list-meta-error">Status nicht abrufbar (<?= htmlspecialchars($listMeta['status_error']) ?>)</p>
+                <p class="list-meta-error"><?= htmlspecialchars(t('listmeta.status_unavailable', [$listMeta['status_error']])) ?></p>
             <?php endif; ?>
         </div>
     <?php endif; ?>
 
     <?php if ($errorMessage !== null): ?>
 
-        <div class="error">Fehler beim Abrufen/Dekodieren: <?= htmlspecialchars($errorMessage) ?></div>
+        <div class="error"><?= htmlspecialchars(t('explorer.fetch_error', [$errorMessage])) ?></div>
 
     <?php else: ?>
 
@@ -653,7 +659,7 @@ if ($showPagination) {
                 $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
                 ?>
                 <?php if (empty($pageEntries)): ?>
-                    <tr><td colspan="<?= $columnCount ?>" style="color:var(--text-3);">Keine Einträge gefunden.</td></tr>
+                    <tr><td colspan="<?= $columnCount ?>" style="color:var(--text-3);"><?= htmlspecialchars(t('table.no_entries')) ?></td></tr>
                 <?php endif; ?>
                 <?php foreach ($pageEntries as $i => $entry): ?>
                     <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
@@ -705,7 +711,7 @@ if ($showPagination) {
                     <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
                     <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
                     <input type="hidden" name="p" value="0">
-                    <label>Pro Seite
+                    <label><?= htmlspecialchars(t('pagination.per_page')) ?>
                         <select name="per_page" onchange="this.form.submit()">
                             <?php foreach ($pageSizeOptions as $opt): ?>
                                 <option value="<?= $opt ?>" <?= $opt === $perPage ? 'selected' : '' ?>><?= $opt ?></option>
@@ -716,8 +722,8 @@ if ($showPagination) {
 
                 <div class="page-numbers">
                     <?php if ($page > 0): ?>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage])) ?>" title="Erste Seite">&laquo;</a>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage])) ?>" title="Vorherige Seite">&lsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.first')) ?>">&laquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.prev')) ?>">&lsaquo;</a>
                     <?php else: ?>
                         <span class="disabled nav-edge">&laquo;</span>
                         <span class="disabled nav-step">&lsaquo;</span>
@@ -734,8 +740,8 @@ if ($showPagination) {
                     <?php endforeach; ?>
 
                     <?php if ($page + 1 < $totalPages): ?>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage])) ?>" title="Nächste Seite">&rsaquo;</a>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage])) ?>" title="Letzte Seite">&raquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.next')) ?>">&rsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.last')) ?>">&raquo;</a>
                     <?php else: ?>
                         <span class="disabled nav-step">&rsaquo;</span>
                         <span class="disabled nav-edge">&raquo;</span>
@@ -747,17 +753,17 @@ if ($showPagination) {
                     <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
                     <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
                     <?php if ($perPage !== $config['page_size']): ?><input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>"><?php endif; ?>
-                    <span>Seite</span>
+                    <span><?= htmlspecialchars(t('pagination.page')) ?></span>
                     <input type="text" inputmode="numeric" name="p" value="<?= $page + 1 ?>" style="width:44px; text-align:center;">
-                    <span>von <?= $totalPages ?></span>
+                    <span><?= htmlspecialchars(t('pagination.of')) ?> <?= $totalPages ?></span>
                 </form>
             <?php endif; ?>
         </div>
 
         <p class="meta">
-            <?= $totalFiltered ?> Einträge<?= $query !== '' ? " (gefiltert aus $fetchedCount)" : '' ?>
+            <?= htmlspecialchars(t('meta.entries', [$totalFiltered])) ?><?= $query !== '' ? ' ' . htmlspecialchars(t('meta.filtered_from', [$fetchedCount])) : '' ?>
             <?php if ($showPagination): ?>
-                &middot; zeige <?= $page * $perPage + 1 ?>–<?= min($totalFiltered, ($page + 1) * $perPage) ?>
+                &middot; <?= htmlspecialchars(t('meta.showing', [$page * $perPage + 1, min($totalFiltered, ($page + 1) * $perPage)])) ?>
             <?php endif; ?>
         </p>
 
