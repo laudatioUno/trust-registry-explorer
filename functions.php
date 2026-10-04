@@ -30,7 +30,7 @@ function decodeJwt(string $jwt): array
 {
     $parts = explode('.', trim($jwt));
     if (count($parts) < 2) {
-        throw new RuntimeException('Ungültiges JWT-Format.');
+        throw new RuntimeException(t('error.invalid_jwt'));
     }
     $header  = json_decode(base64UrlDecode($parts[0]), true, flags: JSON_THROW_ON_ERROR);
     $payload = json_decode(base64UrlDecode($parts[1]), true, flags: JSON_THROW_ON_ERROR);
@@ -55,13 +55,13 @@ function httpGet(string $url): string
     curl_close($ch);
 
     if ($errNo !== 0) {
-        throw new RuntimeException("cURL-Fehler ($errNo): $err");
+        throw new RuntimeException(t('error.curl', [$errNo, $err]));
     }
     if ($httpCode !== 200) {
-        throw new RuntimeException("Unerwarteter HTTP-Status: $httpCode für $url");
+        throw new RuntimeException(t('error.http_status', [$httpCode, $url]));
     }
     if ($body === false || trim($body) === '') {
-        throw new RuntimeException('Leere Antwort von der API.');
+        throw new RuntimeException(t('error.empty_response'));
     }
     return trim($body);
 }
@@ -82,7 +82,7 @@ function fetchStatusListBytes(string $uri): array
         $statusList = $decoded['payload']['status_list'] ?? null;
 
         if (!is_array($statusList) || !isset($statusList['lst'])) {
-            return ['bytes' => null, 'bits' => null, 'error' => 'status_list-Feld fehlt in der Antwort'];
+            return ['bytes' => null, 'bits' => null, 'error' => t('error.status_list_missing')];
         }
 
         $bits = (int) ($statusList['bits'] ?? 1);
@@ -90,7 +90,7 @@ function fetchStatusListBytes(string $uri): array
         $bytes = @gzuncompress($compressed);
 
         if ($bytes === false) {
-            return ['bytes' => null, 'bits' => null, 'error' => 'Statusliste konnte nicht entpackt werden'];
+            return ['bytes' => null, 'bits' => null, 'error' => t('error.status_list_decompress')];
         }
 
         return ['bytes' => $bytes, 'bits' => $bits, 'error' => null];
@@ -127,7 +127,7 @@ function statusLabel(?int $value): string
     static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
 
     if ($value === null) {
-        return 'nicht abrufbar';
+        return t('status.unavailable');
     }
     return $labels[$value] ?? ($value . ' (Unknown Status)');
 }
@@ -147,12 +147,12 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
 
     $fetched = fetchStatusListBytes($uri);
     if ($fetched['error'] !== null) {
-        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => $fetched['error']];
+        return ['status' => null, 'label' => t('status.unavailable'), 'error' => $fetched['error']];
     }
 
     $value = extractStatusBit($fetched['bytes'], $fetched['bits'], (int) $idx);
     if ($value === null) {
-        return ['status' => null, 'label' => 'nicht abrufbar', 'error' => 'Index ausserhalb der Statusliste'];
+        return ['status' => null, 'label' => t('status.unavailable'), 'error' => t('error.status_list_index_oob')];
     }
 
     return ['status' => $value, 'label' => statusLabel($value), 'error' => null];
@@ -194,15 +194,15 @@ function attachRowStatuses(array $entries): array
         $cached = $bytesCache[$uri];
         if ($cached['error'] !== null) {
             $entry['_status_value'] = null;
-            $entry['_status_label'] = 'nicht abrufbar';
+            $entry['_status_label'] = t('status.unavailable');
             $entry['_status_error'] = $cached['error'];
             continue;
         }
 
         $value = extractStatusBit($cached['bytes'], $cached['bits'], (int) $idx);
         $entry['_status_value'] = $value;
-        $entry['_status_label'] = $value === null ? 'nicht abrufbar' : statusLabel($value);
-        $entry['_status_error'] = $value === null ? 'Index ausserhalb der Statusliste' : null;
+        $entry['_status_label'] = $value === null ? t('status.unavailable') : statusLabel($value);
+        $entry['_status_error'] = $value === null ? t('error.status_list_index_oob') : null;
     }
     unset($entry);
 
@@ -411,7 +411,7 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
         return ['entries' => $entries, 'list_meta' => null];
     }
 
-    throw new RuntimeException("Unbekannter API-Modus: {$apiCfg['mode']}");
+    throw new RuntimeException(t('error.unknown_api_mode', [$apiCfg['mode']]));
 }
 
 /**
@@ -445,7 +445,7 @@ function fetchEntryCount(string $baseUrl, array $apiCfg): int
         return (int) ($json['page']['totalElements'] ?? 0);
     }
 
-    throw new RuntimeException("Unbekannter API-Modus: {$apiCfg['mode']}");
+    throw new RuntimeException(t('error.unknown_api_mode', [$apiCfg['mode']]));
 }
 
 /**
@@ -456,7 +456,7 @@ function historyDbConnect(string $dbPath): PDO
 {
     $dir = dirname($dbPath);
     if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-        throw new RuntimeException("Konnte Verzeichnis für History-DB nicht anlegen: $dir");
+        throw new RuntimeException(t('error.history_dir', [$dir]));
     }
 
     $pdo = new PDO('sqlite:' . $dbPath);
@@ -687,7 +687,7 @@ function formatRegistryIdsCell(mixed $value): string
         }
         $type = $item['type'] ?? '?';
         $val  = $item['value'] ?? null;
-        $rendered = ($val === '') ? '<span class="value-empty">(leer)</span>' : htmlspecialchars((string) $val);
+        $rendered = ($val === '') ? '<span class="value-empty">' . htmlspecialchars(t('cell.empty')) . '</span>' : htmlspecialchars((string) $val);
         $lines[] = htmlspecialchars((string) $type) . ': ' . $rendered;
     }
     return $lines !== [] ? implode('<br>', $lines) : '-';
@@ -814,7 +814,7 @@ function formatIssuerCountCell(array $entry, string $envKey, string $targetApiKe
 function renderIssuerList(array $issuers): string
 {
     if ($issuers === []) {
-        return '<p class="detail-empty">No issuers found for this VCT.</p>';
+        return '<p class="detail-empty">' . htmlspecialchars(t('issuers.none_found')) . '</p>';
     }
 
     // In einen .table-scroll-Wrapper (wie die Haupttabellen) UND bewusst NICHT
@@ -851,12 +851,12 @@ function computeValidity(mixed $nbf, mixed $exp): array
     $now = time();
 
     if ($nbf !== null && $now < (int) $nbf) {
-        return ['label' => 'not yet valid', 'class' => 'status-suspended'];
+        return ['label' => t('validity.not_yet_valid'), 'class' => 'status-suspended'];
     }
     if ($exp !== null && $now > (int) $exp) {
-        return ['label' => 'expired', 'class' => 'status-revoked'];
+        return ['label' => t('validity.expired'), 'class' => 'status-revoked'];
     }
-    return ['label' => 'valid', 'class' => 'status-valid'];
+    return ['label' => t('validity.valid'), 'class' => 'status-valid'];
 }
 
 /**
@@ -890,7 +890,7 @@ function renderDetailScalar(mixed $value): string
         return $value ? 'true' : 'false';
     }
     if ($value === '') {
-        return '<span class="value-empty">(leer)</span>';
+        return '<span class="value-empty">' . htmlspecialchars(t('cell.empty')) . '</span>';
     }
     if ($value === null) {
         return '-';
@@ -962,9 +962,9 @@ function renderEntryDetail(array $entry, bool $showHeader = true): string
 
     $html = '';
     if ($showHeader && $header !== null) {
-        $html .= '<div class="detail-section"><h4>JWT-Header</h4>' . renderDetailTree($header) . '</div>';
+        $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.jwt_header')) . '</h4>' . renderDetailTree($header) . '</div>';
     }
-    $html .= '<div class="detail-section"><h4>Payload (vollständig)</h4>' . renderDetailTree($entry) . '</div>';
+    $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.payload_full')) . '</h4>' . renderDetailTree($entry) . '</div>';
     return $html;
 }
 
