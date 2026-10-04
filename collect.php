@@ -38,6 +38,11 @@ if (PHP_SAPI !== 'cli') {
     exit(1);
 }
 
+// config.php ruft t() auf (übersetzte Spaltentitel/Zeitraum-Presets) -- auf
+// der CLI gibt es kein Accept-Language/Cookie, i18n.php fällt dann einfach
+// auf I18N_DEFAULT zurück. Für den Collector selbst irrelevant (er nutzt nur
+// Keys/base_url/path), aber config.php muss trotzdem fehlerfrei laden.
+require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
