@@ -26,12 +26,26 @@
 
 return [
 
+    // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
+    // base_registry_url: Base Registry derselben Umgebung (did.jsonl pro DID,
+    //                    siehe 'base_registry' unten)
     'environments' => [
-        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
-        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch'],
-        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch'],
-        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch'],
-        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch'],
+        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-r.trust-infra.swiyu.admin.ch'],
+        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu.admin.ch'],
+        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu-int.admin.ch'],
+        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
+        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
+    ],
+
+    // Base Registry: pro DID wird das did.jsonl (did:tdw 0.3 und did:webvh 1.0)
+    // über die UUID aus dem letzten DID-Segment abgerufen:
+    //   did:tdw:<scid>:<host>:api:v1:did:<UUID>  ->  <base_registry_url>/api/v1/did/<UUID>/did.jsonl
+    // Nur DIDs, deren Host zu base_registry_url der Umgebung passt, werden
+    // abgefragt (alle anderen gelten als "External DID").
+    'base_registry' => [
+        'path_template'  => '/api/v1/did/%s/did.jsonl',
+        // Max. Anzahl DIDs, die die globale Suche pro Suchlauf im Base Registry nachschlägt
+        'max_search_dids' => 5,
     ],
 
     'apis' => [
@@ -47,6 +61,10 @@ return [
             // Hier hat JEDE Zeile ihre eigene Status-List-Referenz (anders als
             // list_meta bei ncTLS/piTLS, wo es nur eine für die ganze Liste gibt).
             'row_status'  => true,
+            // Zusätzliche Spalte "Base Registry" (Anzahl Versionen im DID-Log, per
+            // AJAX nachgeladen) + Tab "Base Registry" in der aufgeklappten Zeile.
+            // Wert = Feld im Eintrag, das die DID trägt.
+            'base_registry_did_field' => 'sub',
             'columns'     => [
                 ['key' => 'entity_name',    'label' => 'Entity Name',      'type' => 'text'],
                 ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],

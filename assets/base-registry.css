@@ -1,0 +1,112 @@
+/*
+ * Base-Registry-Ansichten (nur index.php): Suchergebnis-Panels, Chip in der
+ * idTS-Tabelle, Tabs in der aufgeklappten Zeile und der "View DID log"-Dialog.
+ * Verwendet ausschliesslich die Tokens aus theme.css (Light/Dark automatisch).
+ */
+
+/* ---- Suche: oben links Trust Registry, rechts Base Registry ---- */
+.br-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; margin-top: 14px; }
+.br-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; }
+.br-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border-soft); }
+.br-panel-head h3 { margin: 0; font-size: 15px; }
+.br-panel-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 14px; }
+.br-block { display: flex; flex-direction: column; gap: 12px; }
+.br-block + .br-block { padding-top: 12px; border-top: 1px dashed var(--border-soft); }
+.br-block-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+
+.br-others-title { margin: 18px 0 8px; font-size: 14px; }
+
+.tr-entity { display: flex; flex-direction: column; gap: 2px; }
+.tr-entity .lbl { font-size: 11px; color: var(--text-3); }
+.tr-entity .val { font-size: 16px; font-weight: bold; color: var(--accent); }
+.tr-hit { display: flex; flex-direction: column; gap: 10px; }
+.tr-hit + .tr-hit { padding-top: 12px; border-top: 1px dashed var(--border-soft); }
+details.tr-full > summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: bold; }
+details.tr-full[open] > summary { margin-bottom: 10px; }
+
+.br-dl { margin: 0; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 7px 12px; font-size: 13px; align-items: center; }
+.br-dl dt { color: var(--text-3); }
+.br-dl dd { margin: 0; overflow-wrap: anywhere; }
+.br-mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
+.br-wrap { overflow-wrap: anywhere; word-break: break-all; }
+.br-msg { margin: 0; font-size: 13px; color: var(--text-2); }
+.br-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.br-link { color: var(--accent); font-size: 13px; font-weight: bold; text-decoration: none; }
+.br-link:hover { text-decoration: underline; }
+
+.br-btn { appearance: none; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: bold; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-2); cursor: pointer; }
+.br-btn:hover { border-color: var(--accent); color: var(--accent); }
+.br-btn-outline { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.br-btn-primary { border-color: var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); }
+.br-btn-primary:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--on-accent); }
+
+/* ---- Status-Pille (Panel-Kopf) und Chip (Tabellenzelle) ---- */
+.br-pill, .br-chip { display: inline-block; padding: 2px 10px; border: 1px solid transparent; border-radius: 12px; font: inherit; font-size: 12px; font-weight: bold; line-height: 1.4; white-space: nowrap; }
+.br-chip { background: var(--surface); }
+button.br-chip { cursor: pointer; }
+.br-pill.br-found { background: var(--success-bg); color: var(--success-text); }
+.br-chip.br-found { border-color: var(--accent); color: var(--accent); }
+button.br-chip.br-found:hover { background: var(--accent-soft); }
+.br-deactivated { background: var(--error-bg); color: var(--error-text); border-color: var(--error-text); }
+.br-notfound { background: var(--warning-bg); color: var(--warning-text); }
+.br-external, .br-unavailable { background: var(--neutral-bg); color: var(--neutral-text); }
+
+.br-loading { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; }
+.br-spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: br-rotate .8s linear infinite; }
+@keyframes br-rotate { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .br-spin { animation: none; } }
+
+/* ---- Aufgeklappte Zeile: Tabs "Trust Statement" / "Base Registry" ---- */
+.detail-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+.detail-tabs button { appearance: none; display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; font: inherit; font-size: 13px; font-weight: bold; color: var(--text-2); background: none; border: 0; border-bottom: 3px solid transparent; cursor: pointer; }
+.detail-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); }
+.detail-tabs .tab-chip { padding: 1px 8px; border-radius: 10px; font-size: 11px; background: var(--accent-soft); color: var(--accent); }
+.detail-tabs .tab-chip:empty { display: none; }
+.detail-pane[hidden] { display: none; }
+
+.br-detail { display: flex; flex-direction: column; gap: 20px; }
+.br-section h4 { margin: 0 0 8px; font-size: 13px; color: var(--accent); }
+table.br-table { border-collapse: collapse; width: 100%; background: var(--surface); }
+table.br-table th, table.br-table td { border: 1px solid var(--border); padding: 6px 10px; font-size: 12px; text-align: left; vertical-align: top; }
+table.br-table th { background: var(--table-head); white-space: nowrap; }
+
+.br-raw-wrap { display: flex; flex-direction: column; gap: 8px; }
+.br-raw-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.br-raw-head h4 { margin: 0; font-size: 13px; color: var(--accent); }
+.br-raw-actions { display: inline-flex; align-items: center; gap: 12px; margin-left: auto; }
+pre.br-raw { margin: 0; padding: 12px 14px; max-height: 420px; overflow: auto; background: var(--table-head-2); border: 1px solid var(--border-soft); border-radius: 6px; font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+
+/* ---- Dialog "View DID log" ---- */
+dialog.br-dialog { width: min(900px, calc(100vw - 24px)); max-height: calc(100vh - 48px); padding: 0; border: 0; border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: 0 12px 40px rgba(0, 0, 0, .35); overflow: hidden; }
+dialog.br-dialog[open] { display: flex; flex-direction: column; }
+dialog.br-dialog::backdrop { background: rgba(0, 0, 0, .5); }
+.br-dialog-head { display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--border-soft); }
+.br-dialog-head h3 { flex: 1; min-width: 0; margin: 0; font-size: 17px; overflow-wrap: anywhere; }
+.br-x { width: 32px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: var(--surface); color: var(--text-2); font-size: 20px; line-height: 1; cursor: pointer; }
+.br-x:hover { border-color: var(--accent); color: var(--accent); }
+.br-dialog-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 18px; border-bottom: 1px solid var(--border-soft); }
+.br-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 20px; overflow: hidden; }
+.br-seg button { appearance: none; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: bold; color: var(--text-2); background: var(--surface); border: 0; cursor: pointer; }
+.br-seg button + button { border-left: 1px solid var(--border); }
+.br-seg button.active { background: var(--accent-fill); color: var(--on-accent); }
+.br-reqline { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-3); }
+.br-dialog-body { flex: 1; padding: 14px 18px; overflow: auto; }
+.br-dialog-body [data-br-pane="parsed"] { display: flex; flex-direction: column; gap: 20px; }
+.br-dialog-body [hidden] { display: none; }
+.br-dialog-foot { display: flex; justify-content: flex-end; padding: 10px 18px 14px; border-top: 1px solid var(--border-soft); }
+
+@media (max-width: 800px) {
+    .br-top { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (max-width: 640px) {
+    .br-dl { grid-template-columns: 96px minmax(0, 1fr); }
+    /* Wie table.issuer-table: von der generischen "Tabelle wird Kartenliste"-
+       Regel ausnehmen (keine data-label-Attribute) -> bleibt scrollbare Tabelle. */
+    table.br-table { display: table; width: 100%; }
+    table.br-table thead { display: table-header-group; }
+    table.br-table tbody { display: table-row-group; }
+    table.br-table tr { display: table-row; }
+    table.br-table th, table.br-table td { display: table-cell; width: auto; }
+    .detail-tabs button { flex: 1; justify-content: center; padding: 10px 4px; }
+}

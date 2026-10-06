@@ -1167,3 +1167,654 @@ function searchAcrossApis(string $envKey, string $baseUrl, array $apis, string $
 
     return ['results' => $results, 'entity_name' => $entityName];
 }
+
+/* ========================================================================
+ * Base Registry (did.jsonl pro DID)
+ *
+ * Jede DID eines Trust-Registry-Eintrags (z.B. idTS 'sub') hat im Base
+ * Registry der Umgebung ein DID-Log:
+ *   did:<tdw|webvh>:<scid>:<host>:api:v1:did:<UUID>
+ *     -> <base_registry_url>/api/v1/did/<UUID>/did.jsonl
+ *
+ * Unterstützte Log-Formate (eine JSON-Zeile pro Version):
+ *   - did:tdw 0.3:   Array  [versionId, versionTime, parameters, {"value": doc}|{"patch": [...]}, proof]
+ *   - did:webvh 1.0: Objekt {versionId, versionTime, parameters, state, proof}
+ * ====================================================================== */
+
+/**
+ * Wird erhöht, wenn sich die Struktur eines gecachten Base-Registry-Ergebnisses ändert.
+ */
+const BASE_REGISTRY_CACHE_SCHEMA = 1;
+
+/**
+ * Zerlegt eine DID des Base Registry und prüft, ob sie zu DIESEM Base Registry
+ * gehört (Host == Host von $registryUrl, Pfad api:v1:did:<uuid>).
+ * null = DID liegt nicht in diesem Base Registry ("External DID").
+ *
+ * @return array{method: string, scid: string, uuid: string}|null
+ */
+function baseRegistryDidInfo(string $did, string $registryUrl): ?array
+{
+    $parts = explode(':', trim($did));
+    if (count($parts) !== 8 || $parts[0] !== 'did' || $parts[4] !== 'api' || $parts[5] !== 'v1' || $parts[6] !== 'did') {
+        return null;
+    }
+    if (!in_array($parts[1], ['tdw', 'webvh'], true)) {
+        return null;
+    }
+    if (!preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $parts[7])) {
+        return null;
+    }
+
+    $regHost = parse_url($registryUrl, PHP_URL_HOST);
+    $regPort = parse_url($registryUrl, PHP_URL_PORT);
+    if (!is_string($regHost)) {
+        return null;
+    }
+    $expected = strtolower($regHost . ($regPort !== null ? ':' . $regPort : ''));
+    // Ein Port steht in einer DID als %3A (did:tdw:...:host%3A8080:...)
+    if (strtolower(rawurldecode($parts[3])) !== $expected) {
+        return null;
+    }
+
+    return ['method' => $parts[1], 'scid' => $parts[2], 'uuid' => strtolower($parts[7])];
+}
+
+/**
+ * GET ohne Exception bei Nicht-200 (anders als httpGet): das Base Registry
+ * unterscheidet "404 = kein Eintrag" von "Fehler/nicht erreichbar".
+ *
+ * @return array{code: int, body: string, error: string|null}
+ */
+function httpGetStatus(string $url, int $timeout = 10): array
+{
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => $timeout,
+        CURLOPT_CONNECTTIMEOUT => 5,
+        CURLOPT_HTTPHEADER     => ['Accept: application/jsonl, application/json, text/plain, */*'],
+    ]);
+    $body = curl_exec($ch);
+    $errNo = curl_errno($ch);
+    $err = curl_error($ch);
+    $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'code'  => $code,
+        'body'  => is_string($body) ? $body : '',
+        'error' => $errNo !== 0 ? t('error.curl', [$errNo, $err]) : null,
+    ];
+}
+
+/**
+ * Normalisiert EINE did.jsonl-Zeile (did:tdw 0.3 = Array, did:webvh 1.0 = Objekt).
+ *
+ * @return array{version_id: mixed, number: int, time: mixed, parameters: array, doc: array|null, is_patch: bool}
+ */
+function baseRegistryNormalizeLine(array $line, int $index): array
+{
+    if ($line !== [] && !isAssocArray($line)) {
+        // did:tdw 0.3: [versionId, versionTime, parameters, {"value": doc}|{"patch": [...]}, proof]
+        $versionId = $line[0] ?? null;
+        $time      = $line[1] ?? null;
+        $params    = is_array($line[2] ?? null) ? $line[2] : [];
+        $state     = is_array($line[3] ?? null) ? $line[3] : [];
+        $doc       = is_array($state['value'] ?? null) ? $state['value'] : null;
+        $isPatch   = isset($state['patch']);
+    } else {
+        // did:webvh 1.0: {versionId, versionTime, parameters, state, proof}
+        $versionId = $line['versionId'] ?? null;
+        $time      = $line['versionTime'] ?? null;
+        $params    = is_array($line['parameters'] ?? null) ? $line['parameters'] : [];
+        $state     = $line['state'] ?? null;
+        $doc       = is_array($state) ? $state : null;
+        $isPatch   = false;
+    }
+
+    $number = (is_string($versionId) && preg_match('/^(\d+)-/', $versionId, $m)) ? (int) $m[1] : $index + 1;
+
+    return ['version_id' => $versionId, 'number' => $number, 'time' => $time, 'parameters' => $params, 'doc' => $doc, 'is_patch' => $isPatch];
+}
+
+/**
+ * Liest die Schlüssel (verificationMethod) eines DID-Dokuments inkl. ihrer
+ * Verwendung (authentication, assertionMethod, ...). Key-IDs sind NICHT fest
+ * verdrahtet (tdw: auth-key-01, webvh: version-auth-1, ...).
+ *
+ * @return list<array{kid: string, type: string, curve: string, purposes: list<string>}>
+ */
+function baseRegistryKeysFromDoc(?array $doc): array
+{
+    if ($doc === null) {
+        return [];
+    }
+
+    $purposesById = [];
+    foreach (['authentication', 'assertionMethod', 'keyAgreement', 'capabilityInvocation', 'capabilityDelegation'] as $prop) {
+        $refs = $doc[$prop] ?? [];
+        foreach (is_array($refs) ? $refs : [] as $ref) {
+            $id = is_array($ref) ? ($ref['id'] ?? null) : $ref;
+            if (is_string($id)) {
+                $purposesById[$id][] = $prop;
+            }
+        }
+    }
+
+    $keys = [];
+    $methods = $doc['verificationMethod'] ?? [];
+    foreach (is_array($methods) ? $methods : [] as $vm) {
+        if (!is_array($vm)) {
+            continue;
+        }
+        $id = (string) ($vm['id'] ?? '');
+        $jwk = is_array($vm['publicKeyJwk'] ?? null) ? $vm['publicKeyJwk'] : [];
+        $fragment = str_contains($id, '#') ? substr($id, (int) strrpos($id, '#') + 1) : $id;
+        $curve = isset($jwk['crv'])
+            ? trim((isset($jwk['kty']) ? $jwk['kty'] . ' ' : '') . $jwk['crv'])
+            : '-';
+        $keys[] = [
+            'kid'      => (string) ($jwk['kid'] ?? $fragment),
+            'type'     => (string) ($vm['type'] ?? '-'),
+            'curve'    => $curve,
+            'purposes' => $purposesById[$id] ?? [],
+        ];
+    }
+    return $keys;
+}
+
+/**
+ * Parst ein komplettes did.jsonl (alle Versionen). Wirft eine RuntimeException
+ * bei ungültigem Format.
+ *
+ * @return array{method: string|null, scid: string|null, did: string|null, versions: int,
+ *   created: mixed, last_update: mixed, deactivated: bool, keys: array, keys_version: int|null,
+ *   keys_stale: bool, lines: list<array>}
+ */
+function parseDidLog(string $raw): array
+{
+    $effective = [];
+    $lines = [];
+    $lastDoc = null;
+    $lastDocVersion = null;
+    $deactivated = false;
+    $index = 0;
+
+    foreach (preg_split('/\R/', trim($raw)) ?: [] as $rawLine) {
+        $rawLine = trim($rawLine);
+        if ($rawLine === '') {
+            continue;
+        }
+        $decoded = json_decode($rawLine, true);
+        if (!is_array($decoded)) {
+            throw new RuntimeException(t('base.error.invalid_log'));
+        }
+
+        $n = baseRegistryNormalizeLine($decoded, $index);
+        if (!is_string($n['version_id']) || $n['version_id'] === '') {
+            throw new RuntimeException(t('base.error.invalid_log'));
+        }
+
+        // Parameter gelten ab ihrer Zeile weiter, bis sie überschrieben werden.
+        $effective = array_replace($effective, $n['parameters']);
+        $deactivatedHere = ($n['parameters']['deactivated'] ?? false) === true;
+        $deactivated = ($effective['deactivated'] ?? false) === true;
+
+        if ($n['doc'] !== null) {
+            $lastDoc = $n['doc'];
+            $lastDocVersion = $n['number'];
+        }
+
+        $updateKeys = $effective['updateKeys'] ?? [];
+        $lines[] = [
+            'number'     => $n['number'],
+            'version_id' => $n['version_id'],
+            'time'       => $n['time'],
+            'update_key' => is_array($updateKeys) && isset($updateKeys[0]) ? (string) $updateKeys[0] : null,
+            'change'     => $index === 0 ? 'created' : ($deactivatedHere ? 'deactivated' : 'updated'),
+            'is_patch'   => $n['is_patch'],
+        ];
+        $index++;
+    }
+
+    if ($lines === []) {
+        throw new RuntimeException(t('base.error.invalid_log'));
+    }
+
+    $last = $lines[count($lines) - 1];
+
+    return [
+        'method'       => isset($effective['method']) ? (string) $effective['method'] : null,
+        'scid'         => isset($effective['scid']) ? (string) $effective['scid'] : null,
+        'did'          => is_string($lastDoc['id'] ?? null) ? $lastDoc['id'] : null,
+        'versions'     => count($lines),
+        'created'      => $lines[0]['time'],
+        'last_update'  => $last['time'],
+        'deactivated'  => $deactivated,
+        'keys'         => baseRegistryKeysFromDoc($lastDoc),
+        'keys_version' => $lastDocVersion,
+        // did:tdw erlaubt "patch"-Zeilen: dann stammen die Keys aus der letzten
+        // Zeile mit vollständigem Dokument (Patch wird nicht angewendet).
+        'keys_stale'   => $last['is_patch'],
+        'lines'        => $lines,
+    ];
+}
+
+/**
+ * Fragt das Base Registry für eine DID ab.
+ *
+ * status: found | deactivated | not_found | external | unavailable
+ *   - external    = DID gehört nicht zu diesem Base Registry (kein Abruf)
+ *   - not_found   = HTTP 404
+ *   - unavailable = Netzwerk-/HTTP-/Format-Fehler (Meldung in 'error')
+ *
+ * @return array{status: string, did: string, uuid: string|null, url: string|null, http_code: int|null,
+ *   error: string|null, raw: string|null, log: array|null}
+ */
+function fetchBaseRegistryEntry(string $registryUrl, string $did, string $pathTemplate = '/api/v1/did/%s/did.jsonl'): array
+{
+    $base = ['status' => 'external', 'did' => $did, 'uuid' => null, 'url' => null, 'http_code' => null, 'error' => null, 'raw' => null, 'log' => null];
+
+    $info = baseRegistryDidInfo($did, $registryUrl);
+    if ($info === null) {
+        return $base;
+    }
+
+    $base['uuid'] = $info['uuid'];
+    $base['url'] = rtrim($registryUrl, '/') . sprintf($pathTemplate, $info['uuid']);
+
+    $resp = httpGetStatus($base['url']);
+    $base['http_code'] = $resp['code'];
+
+    if ($resp['error'] !== null) {
+        return ['status' => 'unavailable', 'error' => $resp['error']] + $base;
+    }
+    if ($resp['code'] === 404) {
+        return ['status' => 'not_found'] + $base;
+    }
+    if ($resp['code'] !== 200) {
+        return ['status' => 'unavailable', 'error' => t('base.error.http', [$resp['code']])] + $base;
+    }
+
+    try {
+        $log = parseDidLog($resp['body']);
+    } catch (Throwable $e) {
+        return ['status' => 'unavailable', 'error' => $e->getMessage()] + $base;
+    }
+
+    return ['status' => $log['deactivated'] ? 'deactivated' : 'found', 'raw' => trim($resp['body']), 'log' => $log] + $base;
+}
+
+/**
+ * Wie fetchBaseRegistryEntry, aber mit Session-Cache für die kompakte Form
+ * (ohne Rohantwort — hält die Session klein, auch bei 200 Tabellenzeilen).
+ * Nur endgültige Antworten (found/deactivated/not_found) werden gecacht; ein
+ * Fehler wird beim nächsten Aufruf erneut versucht.
+ *
+ * $releaseSessionLock: für parallele AJAX-Aufrufe — die Session wird vor dem
+ * (langsamen) HTTP-Abruf freigegeben, sonst würde PHP die Requests nacheinander abarbeiten.
+ */
+function getBaseRegistryCached(string $envKey, string $registryUrl, string $did, bool $forceRefresh, int $ttl, bool $releaseSessionLock = false, string $pathTemplate = '/api/v1/did/%s/did.jsonl'): array
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+
+    $key = $envKey . '::' . $did;
+    $cached = $_SESSION['trust_explorer_base_cache'][$key] ?? null;
+    $isFresh = $cached !== null
+        && ($cached['schema'] ?? null) === BASE_REGISTRY_CACHE_SCHEMA
+        && (time() - (int) $cached['fetched_at']) <= $ttl;
+
+    if (!$forceRefresh && $isFresh) {
+        $result = $cached['result'];
+        if ($releaseSessionLock) {
+            session_write_close();
+        }
+        return $result;
+    }
+
+    if ($releaseSessionLock) {
+        session_write_close();
+    }
+
+    $result = fetchBaseRegistryEntry($registryUrl, $did, $pathTemplate);
+
+    if (in_array($result['status'], ['found', 'deactivated', 'not_found'], true)) {
+        if (session_status() !== PHP_SESSION_ACTIVE) {
+            session_start();
+        }
+        $compact = $result;
+        $compact['raw'] = null;
+        $_SESSION['trust_explorer_base_cache'][$key] = [
+            'schema'     => BASE_REGISTRY_CACHE_SCHEMA,
+            'fetched_at' => time(),
+            'result'     => $compact,
+        ];
+        if ($releaseSessionLock) {
+            session_write_close();
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Welche DIDs die globale Suche im Base Registry nachschlägt: der Suchbegriff
+ * selbst, falls er eine DID ist, plus die 'sub'-DIDs der idTS-Treffer.
+ *
+ * @return list<string>
+ */
+function baseRegistryCandidateDids(string $query, array $idtsHits, int $limit): array
+{
+    $dids = [];
+    $query = trim($query);
+    if (str_starts_with($query, 'did:')) {
+        $dids[] = $query;
+    }
+    foreach ($idtsHits as $hit) {
+        $sub = $hit['sub'] ?? null;
+        if (is_string($sub) && str_starts_with($sub, 'did:')) {
+            $dids[] = $sub;
+        }
+    }
+    return array_slice(array_values(array_unique($dids)), 0, max(1, $limit));
+}
+
+/* ---- Base Registry: HTML-Rendering ---- */
+
+/** "did:tdw:0.3" -> "did:tdw 0.3", "did:webvh:1.0" -> "did:webvh 1.0" */
+function baseRegistryMethodLabel(?string $method): string
+{
+    if ($method === null || $method === '') {
+        return '-';
+    }
+    return (string) preg_replace('/^(did:[a-z0-9]+):(.+)$/i', '$1 $2', $method);
+}
+
+function baseRegistryVersionsLabel(int $versions): string
+{
+    return t($versions === 1 ? 'base.versions_one' : 'base.versions_many', [$versions]);
+}
+
+function baseRegistryStatusLabel(string $status): string
+{
+    return t(match ($status) {
+        'found'       => 'base.status.found',
+        'deactivated' => 'base.status.deactivated',
+        'not_found'   => 'base.status.not_found',
+        'external'    => 'base.status.external',
+        default       => 'base.status.unavailable',
+    });
+}
+
+function baseRegistryStatusClass(string $status): string
+{
+    return match ($status) {
+        'found'       => 'br-found',
+        'deactivated' => 'br-deactivated',
+        'not_found'   => 'br-notfound',
+        'external'    => 'br-external',
+        default       => 'br-unavailable',
+    };
+}
+
+/** Hinweis-/Fehlertext für Status ohne DID-Log. */
+function baseRegistryMessage(array $res): string
+{
+    return match ($res['status']) {
+        'external'  => t('base.hint.external'),
+        'not_found' => t('base.hint.not_found'),
+        default     => (string) ($res['error'] ?? t('base.status.unavailable')),
+    };
+}
+
+/** Kurzform langer Schlüssel/Hashes: "z6MkuVmb…9xWua1u". */
+function baseRegistryShorten(?string $value): string
+{
+    if ($value === null || $value === '') {
+        return '-';
+    }
+    return strlen($value) > 20 ? substr($value, 0, 8) . '…' . substr($value, -7) : $value;
+}
+
+/** Tabellen-Chip (Spalte "Base Registry"): Anzahl Versionen bzw. Status. */
+function renderBaseRegistryChip(array $res): string
+{
+    $status = $res['status'];
+    $label = ($status === 'found' && $res['log'] !== null)
+        ? baseRegistryVersionsLabel((int) $res['log']['versions'])
+        : baseRegistryStatusLabel($status);
+    $class = 'br-chip ' . baseRegistryStatusClass($status);
+    $title = $status === 'unavailable' ? baseRegistryMessage($res) : ($status === 'external' ? t('base.hint.external') : '');
+
+    if ($status === 'external') {
+        return '<span class="' . $class . '" title="' . htmlspecialchars($title) . '">' . htmlspecialchars($label) . '</span>';
+    }
+    return '<button type="button" class="' . $class . '" data-br-open'
+        . ($title !== '' ? ' title="' . htmlspecialchars($title) . '"' : '')
+        . '>' . htmlspecialchars($label) . '</button>';
+}
+
+/** Nicht klickbare Status-Pille (Panel-Kopf in der Suche). */
+function renderBaseRegistryPill(array $res): string
+{
+    return '<span class="br-pill ' . baseRegistryStatusClass($res['status']) . '">' . htmlspecialchars(baseRegistryStatusLabel($res['status'])) . '</span>';
+}
+
+/** Zusammenfassung (Definition-Liste) oder Hinweistext, wenn es kein DID-Log gibt. */
+function renderBaseRegistrySummary(array $res): string
+{
+    $log = $res['log'];
+    if (!in_array($res['status'], ['found', 'deactivated'], true) || $log === null) {
+        return '<p class="br-msg">' . htmlspecialchars(baseRegistryMessage($res)) . '</p>';
+    }
+
+    $curves = array_values(array_unique(array_map(static fn (array $k): string => $k['curve'], $log['keys'])));
+    $kids   = array_map(static fn (array $k): string => $k['kid'], $log['keys']);
+    $keysText = $log['keys'] === []
+        ? t('base.keys_none')
+        : count($log['keys']) . ' · ' . implode(', ', $curves) . ' (' . implode(', ', $kids) . ')';
+
+    $statusBadge = $log['deactivated']
+        ? '<span class="status-badge status-revoked">' . htmlspecialchars(t('base.status.deactivated')) . '</span>'
+        : '<span class="status-badge status-valid">' . htmlspecialchars(t('base.status.active')) . '</span>';
+
+    $rows = [
+        [t('common.status'),            $statusBadge],
+        [t('base.field.method'),        htmlspecialchars(baseRegistryMethodLabel($log['method']))],
+        [t('base.field.versions'),      '<strong>' . (int) $log['versions'] . '</strong>'],
+        [t('base.field.created'),       htmlspecialchars(formatIsoTimestamp($log['created']))],
+        [t('base.field.last_update'),   htmlspecialchars(formatIsoTimestamp($log['last_update']))],
+        [t('base.field.keys'),          htmlspecialchars($keysText)],
+        [t('base.field.uuid'),          '<span class="br-mono">' . htmlspecialchars((string) $res['uuid']) . '</span>'],
+    ];
+
+    $html = '<dl class="br-dl">';
+    foreach ($rows as [$label, $valueHtml]) {
+        $html .= '<dt>' . htmlspecialchars($label) . '</dt><dd>' . $valueHtml . '</dd>';
+    }
+    return $html . '</dl>';
+}
+
+/** Versionshistorie (eine Zeile pro Log-Eintrag). */
+function renderBaseRegistryVersions(array $log): string
+{
+    $html = '<div class="table-scroll"><table class="br-table"><thead><tr>'
+        . '<th>#</th><th>versionId</th><th>' . htmlspecialchars(t('base.col.timestamp')) . '</th>'
+        . '<th>' . htmlspecialchars(t('base.col.update_key')) . '</th><th>' . htmlspecialchars(t('base.col.change')) . '</th>'
+        . '</tr></thead><tbody>';
+
+    foreach ($log['lines'] as $line) {
+        $changeClass = $line['change'] === 'deactivated' ? 'status-revoked' : 'status-unknown';
+        $html .= '<tr>'
+            . '<td>' . (int) $line['number'] . '</td>'
+            . '<td class="br-mono br-wrap">' . htmlspecialchars((string) $line['version_id']) . '</td>'
+            . '<td>' . htmlspecialchars(formatIsoTimestamp($line['time'])) . '</td>'
+            . '<td class="br-mono">' . htmlspecialchars(baseRegistryShorten($line['update_key'])) . '</td>'
+            . '<td><span class="status-badge ' . $changeClass . '">' . htmlspecialchars(t('base.change.' . $line['change'])) . '</span></td>'
+            . '</tr>';
+    }
+    return $html . '</tbody></table></div>';
+}
+
+/** Schlüssel des aktuellen DID-Dokuments. */
+function renderBaseRegistryKeys(array $log): string
+{
+    $html = '';
+    if ($log['keys_stale'] && $log['keys_version'] !== null) {
+        $html .= '<p class="br-msg">' . htmlspecialchars(t('base.keys_stale_note', [(int) $log['keys_version']])) . '</p>';
+    }
+    if ($log['keys'] === []) {
+        return $html . '<p class="br-msg">' . htmlspecialchars(t('base.keys_none')) . '</p>';
+    }
+
+    $html .= '<div class="table-scroll"><table class="br-table"><thead><tr>'
+        . '<th>kid</th><th>' . htmlspecialchars(t('base.col.purpose')) . '</th>'
+        . '<th>' . htmlspecialchars(t('base.col.type')) . '</th><th>' . htmlspecialchars(t('base.col.curve')) . '</th>'
+        . '</tr></thead><tbody>';
+    foreach ($log['keys'] as $key) {
+        $html .= '<tr>'
+            . '<td class="br-mono">' . htmlspecialchars($key['kid']) . '</td>'
+            . '<td>' . htmlspecialchars(implode(', ', $key['purposes']) ?: '-') . '</td>'
+            . '<td>' . htmlspecialchars($key['type']) . '</td>'
+            . '<td>' . htmlspecialchars($key['curve']) . '</td>'
+            . '</tr>';
+    }
+    return $html . '</tbody></table></div>';
+}
+
+/** Rohantwort, je Log-Zeile formatiert (Leerzeile zwischen den Versionen). */
+function baseRegistryPrettyRaw(string $raw): string
+{
+    $out = [];
+    foreach (preg_split('/\R/', trim($raw)) ?: [] as $line) {
+        $line = trim($line);
+        if ($line === '') {
+            continue;
+        }
+        // Als Objekte (nicht assoziativ) dekodieren, damit leere {} nicht zu [] werden.
+        $decoded = json_decode($line);
+        $out[] = $decoded === null
+            ? $line
+            : (string) json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    }
+    return implode("\n\n", $out);
+}
+
+/** Rohantwort-Block mit Kopieren/Öffnen-Aktionen. */
+function renderBaseRegistryRaw(array $res, bool $withHeading = true): string
+{
+    $html = '<div class="br-raw-wrap">';
+    $html .= '<div class="br-raw-head">'
+        . ($withHeading ? '<h4>' . htmlspecialchars(t('base.section.raw')) . '</h4>' : '<span></span>')
+        . '<span class="br-raw-actions">'
+        . '<button type="button" class="br-btn" data-br-copy>' . htmlspecialchars(t('base.copy')) . '</button>'
+        . ($res['url'] !== null ? '<a class="br-link" href="' . htmlspecialchars($res['url']) . '" target="_blank" rel="noopener">' . htmlspecialchars(t('base.open_jsonl')) . ' &#8599;</a>' : '')
+        . '</span></div>'
+        . '<pre class="br-raw">' . htmlspecialchars(baseRegistryPrettyRaw((string) $res['raw'])) . '</pre>'
+        . '</div>';
+    return $html;
+}
+
+/**
+ * Inhalt des Tabs "Base Registry" in der aufgeklappten Tabellenzeile:
+ * Zusammenfassung, Versionshistorie, Schlüssel, Rohantwort. Bei not_found/
+ * external/unavailable stattdessen der Hinweis (bei Fehlern mit "Retry").
+ */
+function renderBaseRegistryDetail(array $res): string
+{
+    if (!in_array($res['status'], ['found', 'deactivated'], true) || $res['log'] === null) {
+        $html = renderBaseRegistrySummary($res);
+        if ($res['status'] === 'unavailable') {
+            $html .= '<button type="button" class="br-btn" data-br-retry>' . htmlspecialchars(t('base.retry')) . '</button>';
+        }
+        return $html;
+    }
+
+    return '<div class="br-detail">'
+        . renderBaseRegistrySummary($res)
+        . '<div class="br-section"><h4>' . htmlspecialchars(t('base.section.versions')) . '</h4>' . renderBaseRegistryVersions($res['log']) . '</div>'
+        . '<div class="br-section"><h4>' . htmlspecialchars(t('base.section.keys')) . '</h4>' . renderBaseRegistryKeys($res['log']) . '</div>'
+        . '<div class="br-section">' . renderBaseRegistryRaw($res) . '</div>'
+        . '</div>';
+}
+
+/**
+ * Dialog "View DID log" (natives <dialog>): Umschalter Parsed / Raw response,
+ * Standardansicht = Rohantwort.
+ */
+function renderBaseRegistryDialog(array $res, string $dialogId, string $title): string
+{
+    $lines = $res['log'] !== null ? (int) $res['log']['versions'] : 0;
+    $reqLine = t('base.request_line', [(string) $res['url'], (int) $res['http_code'], $lines]);
+
+    return '<dialog class="br-dialog" id="' . htmlspecialchars($dialogId) . '" aria-labelledby="' . htmlspecialchars($dialogId) . '-title">'
+        . '<div class="br-dialog-head">'
+        .   '<h3 id="' . htmlspecialchars($dialogId) . '-title">' . htmlspecialchars(t('base.dialog_title') . ' · ' . $title) . '</h3>'
+        .   renderBaseRegistryPill($res)
+        .   '<button type="button" class="br-x" data-br-dialog-close aria-label="' . htmlspecialchars(t('base.close')) . '">&times;</button>'
+        . '</div>'
+        . '<div class="br-dialog-bar">'
+        .   '<div class="br-seg" role="group">'
+        .     '<button type="button" data-br-view="parsed">' . htmlspecialchars(t('base.view_parsed')) . '</button>'
+        .     '<button type="button" data-br-view="raw" class="active">' . htmlspecialchars(t('base.view_raw')) . '</button>'
+        .   '</div>'
+        .   '<span class="br-reqline br-mono" title="' . htmlspecialchars($reqLine) . '">' . htmlspecialchars($reqLine) . '</span>'
+        . '</div>'
+        . '<div class="br-dialog-body">'
+        .   '<div data-br-pane="parsed" hidden>'
+        .     renderBaseRegistrySummary($res)
+        .     ($res['log'] !== null
+                ? '<div class="br-section"><h4>' . htmlspecialchars(t('base.section.versions')) . '</h4>' . renderBaseRegistryVersions($res['log']) . '</div>'
+                  . '<div class="br-section"><h4>' . htmlspecialchars(t('base.section.keys')) . '</h4>' . renderBaseRegistryKeys($res['log']) . '</div>'
+                : '')
+        .   '</div>'
+        .   '<div data-br-pane="raw">' . renderBaseRegistryRaw($res, false) . '</div>'
+        . '</div>'
+        . '<div class="br-dialog-foot"><button type="button" class="br-btn br-btn-primary" data-br-dialog-close>' . htmlspecialchars(t('base.close')) . '</button></div>'
+        . '</dialog>';
+}
+
+/**
+ * Panel "Base Registry" der globalen DID-Suche (rechte Spalte). $results ist
+ * did => Ergebnis aus fetchBaseRegistryEntry; $entityName (aus idTS) dient nur
+ * als Dialog-Titel, wenn genau eine DID nachgeschlagen wurde.
+ */
+function renderBaseRegistrySearchPanel(array $results, ?string $entityName): string
+{
+    $count = count($results);
+    $html = '<section class="br-panel" aria-label="' . htmlspecialchars(t('base.title')) . '">'
+        . '<div class="br-panel-head"><h3>' . htmlspecialchars(t('base.title')) . '</h3>'
+        . ($count === 1 ? renderBaseRegistryPill(reset($results)) : '')
+        . '</div><div class="br-panel-body">';
+
+    if ($count === 0) {
+        $html .= '<p class="br-msg">' . htmlspecialchars(t('base.no_did')) . '</p>';
+    }
+
+    $dialogs = '';
+    $i = 0;
+    foreach ($results as $did => $res) {
+        $i++;
+        $html .= '<div class="br-block">';
+        if ($count > 1) {
+            $html .= '<div class="br-block-head"><span class="br-mono br-wrap">' . htmlspecialchars((string) $did) . '</span>' . renderBaseRegistryPill($res) . '</div>';
+        }
+        $html .= renderBaseRegistrySummary($res);
+
+        if ($res['raw'] !== null) {
+            $dialogId = 'br-dialog-' . $i;
+            $title = ($count === 1 && $entityName !== null) ? $entityName : baseRegistryShorten((string) $res['uuid']);
+            $html .= '<div class="br-actions">'
+                . '<button type="button" class="br-btn br-btn-outline" data-br-dialog-open="' . htmlspecialchars($dialogId) . '">' . htmlspecialchars(t('base.view_log')) . '</button>'
+                . '<a class="br-link" href="' . htmlspecialchars((string) $res['url']) . '" target="_blank" rel="noopener">' . htmlspecialchars(t('base.open_jsonl')) . ' &#8599;</a>'
+                . '</div>';
+            $dialogs .= renderBaseRegistryDialog($res, $dialogId, $title);
+        }
+        $html .= '</div>';
+    }
+
+    return $html . '</div></section>' . $dialogs;
+}
