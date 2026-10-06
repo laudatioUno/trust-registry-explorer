@@ -12,6 +12,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one
 - **Expandable row details** — click any row to see every field present in that entry's JWT; empty fields are explicitly marked as such, missing fields simply don't appear (so you can see at a glance which translations/attributes exist for a given entry)
 - **Global DID search** — search a single DID across all six APIs at once and see every place it appears, with the entity name (from idTS) shown up front if available
+- **Base Registry integration** — for every idTS entry the DID is looked up in the environment's Base Registry (`<base_registry_url>/api/v1/did/<UUID>/did.jsonl`, UUID = last segment of the DID). The idTS table has a "Base Registry" column showing the number of DID log versions (loaded lazily via AJAX for the visible rows only); the expanded row has a "Base Registry" tab with version history, keys and the raw log. The global DID search shows Trust Registry and Base Registry side by side, with a "View DID log" dialog (parsed / raw). Supports `did:tdw` 0.3 and `did:webvh` 1.0. Signatures / hash chain are *not* verified. DIDs hosted on another registry are shown as "External DID"
 - **Responsive UI** — full table on desktop, stacked card view on mobile, same underlying data and markup
 - **Config-driven** — add a new environment or API by editing `config.php`, no other code changes needed
 - **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle. Chart.js is vendored locally (`assets/chart.umd.min.js`) — no CDN dependency, works on hosts without outbound access to third-party script CDNs
@@ -21,7 +22,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Screenshot
 
-![Alternativtext](screenshot-home.png)
+<!-- Add screenshots here -->
 
 ## Requirements
 
@@ -123,6 +124,8 @@ Three files, each with a single responsibility:
 | `index.php` | The UI: environment tabs, API selector, DID search bar, table/card rendering, pagination |
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
+| `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |
+| `assets/base-registry.css`, `assets/base-registry.js` | Styling and front-end logic (lazy chip loading, tabs, DID log dialog) for the Base Registry views |
 | `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
 | `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
 | `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to. Also exposes `TrustExplorer.attachLoadingOverlay()`, which wires the loading spinner to a page's links/forms |
@@ -136,6 +139,7 @@ Fetched and decoded entries are cached per environment+API in the PHP session fo
 
 ## Limitations
 
+- **Base Registry logs are parsed, not verified.** The parser follows the did:tdw 0.3 / did:webvh 1.0 formats; `patch` log lines (tdw) are not applied (keys are shown from the last full document with a note).
 - **JWT signatures are not verified.** This is a display/inspection tool, not a trust or integrity check — don't rely on it to validate authenticity.
 - **Session-based cache**, not shared between users — each visitor triggers their own fetches.
 - **No authentication.** Anyone with access to the deployed page can see everything it can reach; deploy accordingly (e.g. behind your own access control if needed).
