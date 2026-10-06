@@ -48,6 +48,21 @@ $didSearch = null; // ['results' => [...], 'entity_name' => ...] wenn eine Suche
 if ($didQuery !== '') {
     $didBaseUrl = $config['environments'][$didEnv]['base_url'];
     $didSearch  = searchAcrossApis($didEnv, $didBaseUrl, $config['apis'], $didQuery, $config['cache_ttl']);
+
+    // Base Registry: DIDs aus dem Suchbegriff und aus den idTS-Treffern nachschlagen.
+    $baseResults  = [];
+    $baseRegUrl   = $config['environments'][$didEnv]['base_registry_url'] ?? null;
+    $baseRegPath  = $config['base_registry']['path_template'] ?? '/api/v1/did/%s/did.jsonl';
+    if (is_string($baseRegUrl) && $baseRegUrl !== '') {
+        $baseDids = baseRegistryCandidateDids(
+            $didQuery,
+            $didSearch['results']['idTS']['entries'] ?? [],
+            (int) ($config['base_registry']['max_search_dids'] ?? 5)
+        );
+        foreach ($baseDids as $baseDid) {
+            $baseResults[$baseDid] = fetchBaseRegistryEntry($baseRegUrl, $baseDid, $baseRegPath);
+        }
+    }
 }
 
 /**
@@ -173,6 +188,7 @@ if ($showPagination) {
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <link rel="stylesheet" href="assets/theme.css">
 <script src="assets/theme.js"></script>
+<link rel="stylesheet" href="assets/base-registry.css">
 <style>
     body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
@@ -194,7 +210,7 @@ if ($showPagination) {
     .did-search form { display: flex; gap: 8px; }
     .did-search input[type=text] { flex: 1; padding: 7px 10px; font-size: 12px; font-family: monospace; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
     .did-search select { padding: 7px; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
-    .did-search button { padding: 7px 16px; font-size: 13px; border: 1px solid var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); border-radius: 4px; cursor: pointer; }
+    .did-search form button { padding: 7px 16px; font-size: 13px; border: 1px solid var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); border-radius: 4px; cursor: pointer; }
     .did-search .hint { font-size: 11px; color: var(--text-3); margin: 6px 0 0; }
 
     .did-entity { display: flex; align-items: center; gap: 10px; background: var(--accent-soft); border-radius: 6px; padding: 8px 12px; margin-top: 12px; }
@@ -453,15 +469,74 @@ if ($showPagination) {
     <p class="hint"><?= htmlspecialchars(t('search.hint')) ?></p>
 
     <?php if ($didSearch !== null): ?>
-        <?php if ($didSearch['entity_name'] !== null): ?>
-            <div class="did-entity">
-                <span class="lbl"><?= htmlspecialchars(t('search.entity_label')) ?></span>
-                <span class="val"><?= htmlspecialchars($didSearch['entity_name']) ?></span>
-            </div>
-        <?php endif; ?>
+        <?php
+        $idtsHits  = $didSearch['results']['idTS']['entries'] ?? [];
+        $idtsError = $didSearch['results']['idTS']['error'] ?? null;
+        ?>
+        <div class="br-top">
+            <section class="br-panel" aria-label="<?= htmlspecialchars(t('base.trust_registry')) ?>">
+                <div class="br-panel-head">
+                    <h3><?= htmlspecialchars(t('base.trust_registry')) ?></h3>
+                    <span class="did-badge"><?= count($idtsHits) ?> <?= htmlspecialchars(t(count($idtsHits) === 1 ? 'search.hit_singular' : 'search.hit_plural')) ?></span>
+                </div>
+                <div class="br-panel-body">
+                    <?php if ($idtsError !== null): ?>
+                        <p class="did-error"><?= htmlspecialchars($idtsError) ?></p>
+                    <?php elseif ($idtsHits === []): ?>
+                        <p class="br-msg">0 <?= htmlspecialchars(t('search.hit_plural')) ?></p>
+                    <?php endif; ?>
+                    <?php foreach ($idtsHits as $i => $hit): ?>
+                        <div class="tr-hit">
+                            <?php if (count($idtsHits) > 1): ?><p class="did-hit-label"><?= htmlspecialchars(t('search.hit_n', [$i + 1])) ?></p><?php endif; ?>
+                            <?php if ($didSearch['entity_name'] !== null && $i === 0): ?>
+                                <div class="tr-entity">
+                                    <span class="lbl"><?= htmlspecialchars(t('search.entity_label')) ?></span>
+                                    <span class="val"><?= htmlspecialchars($didSearch['entity_name']) ?></span>
+                                </div>
+                            <?php endif; ?>
+                            <dl class="br-dl">
+                                <?php foreach ($config['apis']['idTS']['columns'] as $col):
+                                    if (!in_array($col['type'], ['registry_ids', 'status_badge', 'validity_badge'], true)) { continue; }
+                                ?>
+                                    <dt><?= htmlspecialchars($col['label']) ?></dt>
+                                    <dd>
+                                        <?php if ($col['type'] === 'registry_ids'): ?><?= formatRegistryIdsCell(getPath($hit, $col['key'])) ?>
+                                        <?php elseif ($col['type'] === 'status_badge'): ?><?= formatStatusBadgeCell($hit) ?>
+                                        <?php else: ?><?= formatValidityBadgeCell($hit) ?>
+                                        <?php endif; ?>
+                                    </dd>
+                                <?php endforeach; ?>
+                            </dl>
+                            <details class="tr-full">
+                                <summary><?= htmlspecialchars(t('base.show_statement')) ?></summary>
+                                <?= renderEntryDetail($hit, $config['apis']['idTS']['show_header'] ?? true) ?>
+                            </details>
+                            <?php if (isset($hit['sub']) && is_string($hit['sub'])): ?>
+                                <div class="br-actions">
+                                    <a class="br-link" href="<?= htmlspecialchars(buildUrl($didEnv, 'idTS', $hit['sub'], 0)) ?>"><?= htmlspecialchars(t('base.open_in_explorer')) ?> &rarr;</a>
+                                </div>
+                            <?php endif; ?>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            </section>
+            <?= renderBaseRegistrySearchPanel($baseResults, $didSearch['entity_name']) ?>
+        </div>
 
+        <?php
+        $otherApis = array_diff_key($config['apis'], ['idTS' => true]);
+        $noHitLabels = [];
+        foreach ($otherApis as $apiKeyIter => $apiCfgIter) {
+            $r = $didSearch['results'][$apiKeyIter] ?? ['entries' => [], 'error' => null];
+            if (count($r['entries']) === 0 && $r['error'] === null) {
+                $noHitLabels[] = $apiCfgIter['label'];
+            }
+        }
+        ?>
+        <?php if ($otherApis !== []): ?>
+        <h3 class="br-others-title"><?= htmlspecialchars(t('base.other_apis')) ?></h3>
         <div class="did-results">
-            <?php foreach ($config['apis'] as $apiKeyIter => $apiCfgIter):
+            <?php foreach ($otherApis as $apiKeyIter => $apiCfgIter):
                 $r = $didSearch['results'][$apiKeyIter] ?? ['entries' => [], 'error' => null];
                 $hitCount = count($r['entries']);
             ?>
@@ -489,15 +564,6 @@ if ($showPagination) {
                 <?php endif; ?>
             <?php endforeach; ?>
 
-            <?php
-            $noHitLabels = [];
-            foreach ($config['apis'] as $apiKeyIter => $apiCfgIter) {
-                $r = $didSearch['results'][$apiKeyIter] ?? ['entries' => [], 'error' => null];
-                if ($r['error'] === null && count($r['entries']) === 0) {
-                    $noHitLabels[] = $apiCfgIter['label'];
-                }
-            }
-            ?>
             <?php if ($noHitLabels !== []): ?>
                 <div class="did-card no-hit">
                     <div class="did-card-head">
@@ -507,6 +573,7 @@ if ($showPagination) {
                 </div>
             <?php endif; ?>
         </div>
+        <?php endif; ?>
     <?php endif; ?>
 </div>
 
@@ -629,6 +696,7 @@ if ($showPagination) {
 
     <?php else: ?>
 
+        <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url']); ?>
         <div class="table-scroll">
         <table>
             <thead>
@@ -651,11 +719,14 @@ if ($showPagination) {
                             <?php endif; ?>
                         </th>
                     <?php endforeach; ?>
+                    <?php if ($hasBaseCol): ?>
+                        <th><?= htmlspecialchars(t('base.title')) ?></th>
+                    <?php endif; ?>
                 </tr>
             </thead>
             <tbody>
                 <?php
-                $columnCount = count($config['apis'][$apiKey]['columns']);
+                $columnCount = count($config['apis'][$apiKey]['columns']) + ($hasBaseCol ? 1 : 0);
                 $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
                 ?>
                 <?php if (empty($pageEntries)): ?>
@@ -687,12 +758,27 @@ if ($showPagination) {
                                 <?php endif; ?>
                             </td>
                         <?php endforeach; ?>
+                        <?php if ($hasBaseCol):
+                            $entryDid = getPath($entry, $apiCfg['base_registry_did_field']);
+                            $entryDid = is_string($entryDid) ? $entryDid : '';
+                        ?>
+                            <td class="br-cell" data-label="<?= htmlspecialchars(t('base.title')) ?>"<?= $entryDid !== '' ? ' data-br-did="' . htmlspecialchars($entryDid) . '"' : '' ?>>
+                                <?php if ($entryDid === ''): ?>-<?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                     </tr>
                     <?php if ($isExpandable): ?>
                         <tr class="detail-row">
                             <td colspan="<?= $columnCount ?>">
                                 <?php if (!empty($apiCfg['issuer_count_from'])): ?>
                                     <?= renderIssuerList($entry['_issuers'] ?? []) ?>
+                                <?php elseif ($hasBaseCol && $entryDid !== ''): ?>
+                                    <div class="detail-tabs" role="tablist">
+                                        <button type="button" role="tab" class="active" data-br-tab="statement"><?= htmlspecialchars(t('base.tab.statement')) ?></button>
+                                        <button type="button" role="tab" data-br-tab="base"><?= htmlspecialchars(t('base.title')) ?> <span class="tab-chip" data-br-tab-chip></span></button>
+                                    </div>
+                                    <div class="detail-pane" data-br-pane-name="statement"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></div>
+                                    <div class="detail-pane" data-br-pane-name="base" data-br-did="<?= htmlspecialchars($entryDid) ?>" hidden></div>
                                 <?php else: ?>
                                     <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?>
                                 <?php endif; ?>
@@ -772,6 +858,18 @@ if ($showPagination) {
 <?php endif; ?>
 </div>
 
+<script>
+window.BR_CONFIG = <?= json_encode([
+    'endpoint' => 'base_registry.php',
+    'env'      => $envKey,
+    'i18n'     => [
+        'loading'     => t('base.status.loading'),
+        'unavailable' => t('base.status.unavailable'),
+        'copied'      => t('base.copied'),
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+</script>
+<script src="assets/base-registry.js"></script>
 <script>
 document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
     row.addEventListener('click', function () {
