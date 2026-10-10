@@ -11,6 +11,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **JWT decoding** (header + payload, no signature verification) with human-readable timestamps
 - **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one
 - **Expandable row details** — click any row to see every field present in that entry's JWT; empty fields are explicitly marked as such, missing fields simply don't appear (so you can see at a glance which translations/attributes exist for a given entry)
+- **Open in jwt.io** — every expanded row (and the list panel of `ncTLS`/`piTLS`) has a link that opens the original, unmodified JWT in [jwt.io](https://jwt.io), e.g. to inspect it or check its signature. The token is passed in the URL fragment (`#token=…`), so it isn't sent to the jwt.io server; the decoder URL is configurable via `jwt_decoder` in `config.php`
 - **Global DID search** — search a single DID across all six APIs at once and see every place it appears, with the entity name (from idTS) shown up front if available
 - **Base Registry integration** — for every idTS entry the DID is looked up in the environment's Base Registry (`<base_registry_url>/api/v1/did/<UUID>/did.jsonl`, UUID = last segment of the DID). The idTS table has a "Base Registry" column showing the number of DID log versions (loaded lazily via AJAX for the visible rows only); the expanded row has a "Base Registry" tab with version history, keys and the raw log. The global DID search shows Trust Registry and Base Registry side by side, with a "View DID log" dialog (parsed / raw). Supports `did:tdw` 0.3 and `did:webvh` 1.0. Signatures / hash chain are *not* verified. DIDs hosted on another registry are shown as "External DID"
 - **Responsive UI** — full table on desktop, stacked card view on mobile, same underlying data and markup
@@ -111,6 +112,7 @@ Everything that can change — environments, APIs, their columns, and a few glob
 Other settings in `config.php`:
 
 - `page_size` — how many rows are shown per page after filtering/searching
+- `jwt_decoder` — label and URL template (`%s` = the JWT) of the external JWT decoder linked from the row details
 - `cache_ttl` — how long fetched data is kept in the PHP session before a new "Query" click forces a refresh
 
 ## Architecture
