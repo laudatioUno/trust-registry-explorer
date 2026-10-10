@@ -36,6 +36,18 @@ details.tr-full[open] > summary { margin-bottom: 10px; }
 
 .br-btn { appearance: none; padding: 6px 14px; font: inherit; font-size: 13px; font-weight: bold; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--text-2); cursor: pointer; }
 .br-btn:hover { border-color: var(--accent); color: var(--accent); }
+.br-btn-sm { padding: 2px 8px; font-size: 11px; }
+.br-key-copy { display: inline-flex; gap: 6px; white-space: nowrap; }
+/* Kopier-Buttons: Icon + Beschriftung; der Zustand wechselt nur Icon und Farbe. */
+.br-btn-icon { display: inline-flex; align-items: center; gap: 5px; }
+.br-ico { width: 14px; height: 14px; flex: none; }
+.br-btn-sm .br-ico { width: 12px; height: 12px; }
+.br-ico-done, .br-ico-fail,
+.br-copied .br-ico-copy, .br-copy-failed .br-ico-copy { display: none; }
+.br-copied .br-ico-done, .br-copy-failed .br-ico-fail { display: inline-block; }
+.br-btn.br-copied, .br-btn.br-copied:hover { background: var(--success-bg); border-color: var(--success-text); color: var(--success-text); }
+.br-btn.br-copy-failed, .br-btn.br-copy-failed:hover { background: var(--error-bg); border-color: var(--error-text); color: var(--error-text); }
+.br-sr { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .br-btn-outline { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
 .br-btn-primary { border-color: var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); }
 .br-btn-primary:hover { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); color: var(--on-accent); }
