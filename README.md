@@ -18,6 +18,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle. Chart.js is vendored locally (`assets/chart.umd.min.js`) — no CDN dependency, works on hosts without outbound access to third-party script CDNs
 - **Dark mode** — follows the OS/browser color scheme by default; a toggle (🌙/☀️, top right on both pages) lets you override it, remembered across visits. Covers the Explorer, the History page, and the History chart's colors (axes, grid, curves)
 - **Logo & favicon** — a two-color "registry stack" mark (Petrol `#0F6B72` & Gold `#D9A62B`) in the browser tab and next to the title on both pages; the same two colors drive `--accent`/`--accent-2` everywhere else in the UI (active tab, links, buttons, the first two chart curves), so the brand is consistent top to bottom
+- **Docker support** — `docker compose up -d` runs the Explorer (Apache + PHP) and the History collector in containers, nothing to install on the host except Docker; History data lives in a named volume and survives restarts and image updates
 - **Loading spinner** — the logo doubles as a subtle animated indicator (bars pulse, seal pops) shown over the table/chart while a page reload is in flight, e.g. switching to an API with 1'500+ entries (vqPS)
 
 ## Screenshot
@@ -25,6 +26,8 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 ![Alternativtext](screenshot-home.png)
 
 ## Requirements
+
+Either Docker with Compose (see [Running with Docker](#running-with-docker)) — then nothing else is needed on the host — or:
 
 - PHP 8.1 or newer
 - PHP extensions: `curl`, `session`, `pdo_sqlite` (only needed for the History feature)
@@ -41,6 +44,36 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
    ```
 
 3. Open the page in a browser, pick an environment tab, then an API — that's it, no build step or dependencies to install.
+
+### Running with Docker
+
+```bash
+docker compose up -d --build
+```
+
+Then open <http://localhost:8080>. This starts two containers from the same image:
+
+- **`web`** — Apache + PHP serving the Explorer and History pages
+- **`collector`** — runs `collect.php` once on start and then every `COLLECT_INTERVAL_HOURS` hours (default `24`); invalid values fall back to `24`. No cron needed
+
+Both share the named volume `storage` (mounted at `storage/`), so the History database and `collect.log` persist across `docker compose down`/`up` and rebuilds. Only `docker compose down -v` deletes it. `storage/`, dotfiles and `collect.php` are blocked from web access.
+
+Settings via environment variables (or a `.env` file next to `docker-compose.yml`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRE_PORT` | `8080` | Host port for the web UI |
+| `COLLECT_INTERVAL_HOURS` | `24` | Hours between two collector runs |
+
+Useful commands:
+
+```bash
+docker compose logs -f collector                    # collector output
+docker compose exec collector php collect.php       # extra collector run now
+docker compose cp web:/var/www/html/storage/history.sqlite .   # backup
+```
+
+To keep the data in a host folder instead of a named volume, or to use your own `config.php` without rebuilding, uncomment the bind-mount lines in `docker-compose.yml` (for the folder, run `chown 33:33 storage` once so the container's `www-data` user can write to it). Note that every restart of the `collector` container also triggers one collector run.
 
 ### Enabling History tracking
 
@@ -126,6 +159,8 @@ Three files, each with a single responsibility:
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
 | `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |
 | `assets/base-registry.css`, `assets/base-registry.js` | Styling and front-end logic (lazy chip loading, tabs, DID log dialog) for the Base Registry views |
+| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Container image (official `php:8.3-apache`) and the `web` + `collector` services with the persistent `storage` volume |
+| `docker/apache.conf` | Apache settings for the container — denies web access to `storage/`, dotfiles and `collect.php` |
 | `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
 | `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
 | `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to. Also exposes `TrustExplorer.attachLoadingOverlay()`, which wires the loading spinner to a page's links/forms |
