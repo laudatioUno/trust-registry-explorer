@@ -207,6 +207,15 @@ return [
         'overview_url' => 'https://swiyu-admin-ch.github.io/introduction/#trust-in-the-swiyu-ecosystem',
     ],
 
+    // Externer JWT-Decoder: in der aufgeklappten Zeile (bzw. im Listen-Panel
+    // bei ncTLS/piTLS) erscheint ein Link, der das Original-JWT dort öffnet.
+    // %s wird durch das JWT ersetzt; es steht im Fragment und wird so nicht
+    // an den Server des Decoders gesendet.
+    'jwt_decoder' => [
+        'label'        => 'jwt.io',
+        'url_template' => 'https://jwt.io/#token=%s',
+    ],
+
     // History-Feature: Ablage der nächtlich per Cronjob (collect.php)
     // gesammelten Trust-Statement-Zählungen (SQLite, filebasiert).
     'history' => [

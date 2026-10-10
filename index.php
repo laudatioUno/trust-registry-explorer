@@ -280,6 +280,10 @@ if ($showPagination) {
     tr.detail-row td { padding: 14px 20px; }
     .detail-section { margin-bottom: 14px; }
     .detail-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+    .jwt-decoder { margin: 0 0 10px; text-align: right; }
+    .list-meta-panel .jwt-decoder { margin: 10px 0 0; }
+    .jwt-decoder-link { color: var(--accent); font-size: 13px; font-weight: bold; text-decoration: none; }
+    .jwt-decoder-link:hover { text-decoration: underline; }
     table.detail-kv { width: 100%; border: none; background: transparent; }
     table.detail-kv th { background: transparent; border: none; width: 220px; font-weight: normal; color: var(--text-2); font-size: 12px; vertical-align: top; padding: 3px 8px 3px 0; }
     table.detail-kv td { border: none; padding: 3px 0; font-size: 12px; }
@@ -509,7 +513,7 @@ if ($showPagination) {
                             </dl>
                             <details class="tr-full">
                                 <summary><?= htmlspecialchars(t('base.show_statement')) ?></summary>
-                                <?= renderEntryDetail($hit, $config['apis']['idTS']['show_header'] ?? true) ?>
+                                <?= renderEntryDetail($hit, $config['apis']['idTS']['show_header'] ?? true, $config['jwt_decoder'] ?? []) ?>
                             </details>
                             <?php if (isset($hit['sub']) && is_string($hit['sub'])): ?>
                                 <div class="br-actions">
@@ -556,7 +560,7 @@ if ($showPagination) {
                             <?php else: ?>
                                 <?php foreach ($r['entries'] as $i => $hit): ?>
                                     <?php if ($hitCount > 1): ?><p class="did-hit-label"><?= htmlspecialchars(t('search.hit_n', [$i + 1])) ?></p><?php endif; ?>
-                                    <?= renderEntryDetail($hit, $apiCfgIter['show_header'] ?? true) ?>
+                                    <?= renderEntryDetail($hit, $apiCfgIter['show_header'] ?? true, $config['jwt_decoder'] ?? []) ?>
                                 <?php endforeach; ?>
                             <?php endif; ?>
                         </div>
@@ -684,6 +688,7 @@ if ($showPagination) {
                     </span>
                 </div>
             </div>
+            <?= renderJwtDecoderLink($listMeta['jwt'] ?? null, $config['jwt_decoder'] ?? []) ?>
             <?php if ($listMeta['status_error'] !== null): ?>
                 <p class="list-meta-error"><?= htmlspecialchars(t('listmeta.status_unavailable', [$listMeta['status_error']])) ?></p>
             <?php endif; ?>
@@ -777,10 +782,10 @@ if ($showPagination) {
                                         <button type="button" role="tab" class="active" data-br-tab="statement"><?= htmlspecialchars(t('base.tab.statement')) ?></button>
                                         <button type="button" role="tab" data-br-tab="base"><?= htmlspecialchars(t('base.title')) ?> <span class="tab-chip" data-br-tab-chip></span></button>
                                     </div>
-                                    <div class="detail-pane" data-br-pane-name="statement"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></div>
+                                    <div class="detail-pane" data-br-pane-name="statement"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true, $config['jwt_decoder'] ?? []) ?></div>
                                     <div class="detail-pane" data-br-pane-name="base" data-br-did="<?= htmlspecialchars($entryDid) ?>" hidden></div>
                                 <?php else: ?>
-                                    <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?>
+                                    <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true, $config['jwt_decoder'] ?? []) ?>
                                 <?php endif; ?>
                             </td>
                         </tr>
