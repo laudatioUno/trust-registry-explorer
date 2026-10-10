@@ -8,10 +8,11 @@
  *  - Klick auf den Chip klappt die Zeile auf und zeigt den Tab "Base Registry"
  *    (lädt Details + Rohlog beim ersten Öffnen nach).
  *  - Dialog "View DID log" in der Suche (natives <dialog>, serverseitig gerendert).
+ *  - Kopieren des Rohlogs und einzelner Schlüssel (JWK/PEM) in die Zwischenablage.
  *
  * Konfiguration kommt von index.php:
  *   window.BR_CONFIG = { endpoint: 'base_registry.php', env: 'REF',
- *                        i18n: { loading, unavailable, copied } };
+ *                        i18n: { loading, unavailable, copied, copyFailed } };
  */
 (function () {
     'use strict';
@@ -176,19 +177,81 @@
 
     /* ---------- Dialog / Kopieren ---------- */
 
-    function copyText(text) {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            return navigator.clipboard.writeText(text);
-        }
+    /*
+     * Fallback über eine unsichtbare Textarea (ohne Clipboard-API, z.B. http
+     * über eine IP statt localhost). Die Textarea muss neben dem Button liegen:
+     * Bei einem offenen modalen <dialog> ist alles ausserhalb inert, eine
+     * Auswahl dort schlägt fehl - execCommand meldet trotzdem Erfolg.
+     */
+    function copyViaTextarea(text, near) {
         return new Promise(function (resolve, reject) {
+            var host = (near && near.closest('dialog')) || document.body;
             var ta = document.createElement('textarea');
             ta.value = text;
+            ta.setAttribute('readonly', '');
             ta.style.position = 'fixed';
+            ta.style.top = '0';
+            ta.style.left = '0';
             ta.style.opacity = '0';
-            document.body.appendChild(ta);
+            host.appendChild(ta);
             ta.select();
             try { document.execCommand('copy') ? resolve() : reject(); } catch (e) { reject(e); }
-            document.body.removeChild(ta);
+            host.removeChild(ta);
+            if (near && near.focus) near.focus();
+        });
+    }
+
+    /** Clipboard-API, bei Fehlen oder Ablehnung (Berechtigung, Fokus) der Fallback. */
+    function copyText(text, near) {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            return navigator.clipboard.writeText(text).catch(function () {
+                return copyViaTextarea(text, near);
+            });
+        }
+        return copyViaTextarea(text, near);
+    }
+
+    /*
+     * Live-Region für Screenreader: Der Zustand des Buttons ist nur über Farbe
+     * und Icon sichtbar, das Ergebnis wird deshalb zusätzlich angesagt.
+     */
+    var liveRegion = null;
+
+    function announce(message) {
+        if (!liveRegion) {
+            liveRegion = document.createElement('span');
+            liveRegion.className = 'br-sr';
+            liveRegion.setAttribute('role', 'status');
+            liveRegion.setAttribute('aria-live', 'polite');
+            document.body.appendChild(liveRegion);
+        }
+        liveRegion.textContent = '';
+        // Kurz verzögert, damit dieselbe Meldung zweimal hintereinander erneut angesagt wird.
+        setTimeout(function () { liveRegion.textContent = message; }, 50);
+    }
+
+    /**
+     * Kopiert und zeigt das Ergebnis am Button selbst an (Klasse br-copied bzw.
+     * br-copy-failed: Farbe + Häkchen/Kreuz statt Zwischenablage-Icon). Die
+     * Beschriftung bleibt unverändert, damit die Tabellenzeile nicht springt.
+     */
+    function copyWithFeedback(button, text) {
+        if (button.hasAttribute('data-br-copying')) return;
+        button.setAttribute('data-br-copying', '');
+
+        function show(cls, message, duration) {
+            button.classList.add(cls);
+            announce(message);
+            setTimeout(function () {
+                button.classList.remove(cls);
+                button.removeAttribute('data-br-copying');
+            }, duration);
+        }
+
+        copyText(text, button).then(function () {
+            show('br-copied', i18n.copied || 'OK', 1500);
+        }, function () {
+            show('br-copy-failed', i18n.copyFailed || '!', 2500);
         });
     }
 
@@ -265,16 +328,20 @@
             return;
         }
 
+        // Schlüssel als JWK/PEM: der Wert steht serverseitig im Attribut.
+        var keyCopy = t.closest('[data-br-copy-value]');
+        if (keyCopy) {
+            e.stopPropagation();
+            copyWithFeedback(keyCopy, keyCopy.getAttribute('data-br-copy-value'));
+            return;
+        }
+
         var copy = t.closest('[data-br-copy]');
         if (copy) {
             var pre = copy.closest('.br-raw-wrap');
             pre = pre ? pre.querySelector('pre.br-raw') : null;
             if (!pre) return;
-            var original = copy.textContent;
-            copyText(pre.textContent).then(function () {
-                copy.textContent = i18n.copied || 'OK';
-                setTimeout(function () { copy.textContent = original; }, 1500);
-            }).catch(function () { /* Kopieren nicht möglich: stillschweigend ignorieren */ });
+            copyWithFeedback(copy, pre.textContent);
         }
     }, true);
 

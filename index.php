@@ -866,6 +866,7 @@ window.BR_CONFIG = <?= json_encode([
         'loading'     => t('base.status.loading'),
         'unavailable' => t('base.status.unavailable'),
         'copied'      => t('base.copied'),
+        'copyFailed'  => t('base.copy_failed'),
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>

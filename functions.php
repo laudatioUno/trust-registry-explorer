@@ -1184,7 +1184,7 @@ function searchAcrossApis(string $envKey, string $baseUrl, array $apis, string $
 /**
  * Wird erhöht, wenn sich die Struktur eines gecachten Base-Registry-Ergebnisses ändert.
  */
-const BASE_REGISTRY_CACHE_SCHEMA = 1;
+const BASE_REGISTRY_CACHE_SCHEMA = 2;
 
 /**
  * Zerlegt eine DID des Base Registry und prüft, ob sie zu DIESEM Base Registry
@@ -1279,11 +1279,109 @@ function baseRegistryNormalizeLine(array $line, int $index): array
 }
 
 /**
+ * Pflichtfelder eines öffentlichen JWK je Schlüsseltyp (RFC 7638, Abschnitt 3.2).
+ * Alles andere (kid, use, alg, ...) wird beim Kopieren weggelassen, damit der
+ * Schlüssel ausserhalb des Explorers ohne Ballast weiterverwendet werden kann.
+ */
+const JWK_REQUIRED_MEMBERS = [
+    'EC'  => ['crv', 'kty', 'x', 'y'],
+    'OKP' => ['crv', 'kty', 'x'],
+];
+
+/**
+ * Kurven, für die ein PEM (SubjectPublicKeyInfo) erzeugt werden kann:
+ * kty, OID der Kurve (DER-kodiert, hex) und Länge einer Koordinate in Bytes.
+ * Eine neue Kurve braucht nur einen Eintrag hier, keinen eigenen Code.
+ */
+const JWK_PEM_CURVES = [
+    'P-256'     => ['kty' => 'EC',  'oid' => '06082a8648ce3d030107', 'size' => 32],
+    'P-384'     => ['kty' => 'EC',  'oid' => '06052b81040022',       'size' => 48],
+    'P-521'     => ['kty' => 'EC',  'oid' => '06052b81040023',       'size' => 66],
+    'secp256k1' => ['kty' => 'EC',  'oid' => '06052b8104000a',       'size' => 32],
+    'Ed25519'   => ['kty' => 'OKP', 'oid' => '06032b6570',           'size' => 32],
+    'Ed448'     => ['kty' => 'OKP', 'oid' => '06032b6571',           'size' => 57],
+    'X25519'    => ['kty' => 'OKP', 'oid' => '06032b656e',           'size' => 32],
+    'X448'      => ['kty' => 'OKP', 'oid' => '06032b656f',           'size' => 56],
+];
+
+/**
+ * Reduziert einen JWK auf seine Pflichtfelder (alphabetisch sortiert wie in
+ * RFC 7638). null, wenn der Typ unbekannt ist oder ein Pflichtfeld fehlt -
+ * dann wird kein Kopieren angeboten statt eines unbrauchbaren Schlüssels.
+ */
+function baseRegistryMinimalJwk(array $jwk): ?array
+{
+    $members = JWK_REQUIRED_MEMBERS[$jwk['kty'] ?? ''] ?? null;
+    if ($members === null) {
+        return null;
+    }
+    $minimal = [];
+    foreach ($members as $member) {
+        if (!is_string($jwk[$member] ?? null) || $jwk[$member] === '') {
+            return null;
+        }
+        $minimal[$member] = $jwk[$member];
+    }
+    return $minimal;
+}
+
+/** DER-Element (Tag + Länge + Inhalt); Länge in Kurz- oder Langform. */
+function baseRegistryDerEncode(int $tag, string $content): string
+{
+    $len = strlen($content);
+    if ($len < 0x80) {
+        return chr($tag) . chr($len) . $content;
+    }
+    $lenBytes = ltrim(pack('N', $len), "\x00");
+    return chr($tag) . chr(0x80 | strlen($lenBytes)) . $lenBytes . $content;
+}
+
+/**
+ * Wandelt einen öffentlichen EC- oder OKP-JWK in ein PEM (SubjectPublicKeyInfo,
+ * RFC 5480 / RFC 8410) um. Beide Typen teilen sich denselben Aufbau, nur der
+ * AlgorithmIdentifier und die Schlüsselbytes unterscheiden sich:
+ *   EC:  {id-ecPublicKey, Kurven-OID} + 0x04 || x || y (unkomprimierter Punkt)
+ *   OKP: {Kurven-OID}                 + x
+ * Gibt null zurück, wenn Kurve unbekannt oder Koordinaten ungültig sind.
+ */
+function baseRegistryJwkToPem(array $jwk): ?string
+{
+    $curve = JWK_PEM_CURVES[$jwk['crv'] ?? ''] ?? null;
+    if ($curve === null || ($jwk['kty'] ?? null) !== $curve['kty']) {
+        return null;
+    }
+
+    $coords = $curve['kty'] === 'EC' ? ['x', 'y'] : ['x'];
+    $keyBytes = $curve['kty'] === 'EC' ? "\x04" : '';
+    foreach ($coords as $c) {
+        $value = $jwk[$c] ?? null;
+        if (!is_string($value) || !preg_match('/^[A-Za-z0-9_-]+$/', $value)) {
+            return null;
+        }
+        $bytes = base64UrlDecode($value);
+        if (strlen($bytes) !== $curve['size']) {
+            return null;
+        }
+        $keyBytes .= $bytes;
+    }
+
+    $algorithm = $curve['kty'] === 'EC'
+        ? baseRegistryDerEncode(0x30, hex2bin('06072a8648ce3d0201') . hex2bin($curve['oid']))
+        : baseRegistryDerEncode(0x30, hex2bin($curve['oid']));
+    // BIT STRING: führendes Byte = Anzahl ungenutzter Bits (immer 0).
+    $spki = baseRegistryDerEncode(0x30, $algorithm . baseRegistryDerEncode(0x03, "\x00" . $keyBytes));
+
+    return "-----BEGIN PUBLIC KEY-----\n"
+        . chunk_split(base64_encode($spki), 64, "\n")
+        . "-----END PUBLIC KEY-----\n";
+}
+
+/**
  * Liest die Schlüssel (verificationMethod) eines DID-Dokuments inkl. ihrer
  * Verwendung (authentication, assertionMethod, ...). Key-IDs sind NICHT fest
  * verdrahtet (tdw: auth-key-01, webvh: version-auth-1, ...).
  *
- * @return list<array{kid: string, type: string, curve: string, purposes: list<string>}>
+ * @return list<array{kid: string, type: string, curve: string, purposes: list<string>, jwk: array|null, pem: string|null}>
  */
 function baseRegistryKeysFromDoc(?array $doc): array
 {
@@ -1319,6 +1417,8 @@ function baseRegistryKeysFromDoc(?array $doc): array
             'type'     => (string) ($vm['type'] ?? '-'),
             'curve'    => $curve,
             'purposes' => $purposesById[$id] ?? [],
+            'jwk'      => baseRegistryMinimalJwk($jwk),
+            'pem'      => baseRegistryJwkToPem($jwk),
         ];
     }
     return $keys;
@@ -1659,6 +1759,55 @@ function renderBaseRegistryVersions(array $log): string
     return $html . '</tbody></table></div>';
 }
 
+/**
+ * Icons eines Kopier-Buttons: Zwischenablage, Häkchen (kopiert) und Kreuz
+ * (fehlgeschlagen). Alle drei werden mitgerendert, base-registry.css zeigt je
+ * nach Zustand genau eines - so bleibt die Beschriftung und damit die Breite
+ * des Buttons gleich. stroke="currentColor" übernimmt die Textfarbe
+ * (Hover, Light/Dark) ohne eigene Farbwerte.
+ */
+function renderBaseRegistryCopyIcons(): string
+{
+    $paths = [
+        'copy' => '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+        'done' => '<path d="M20 6 9 17l-5-5"/>',
+        'fail' => '<path d="M18 6 6 18M6 6l12 12"/>',
+    ];
+    $html = '';
+    foreach ($paths as $state => $path) {
+        $html .= '<svg class="br-ico br-ico-' . $state . '" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+            . ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+            . $path . '</svg>';
+    }
+    return $html;
+}
+
+/**
+ * Kopier-Buttons "JWK" / "PEM" für einen Schlüssel, damit er ausserhalb des
+ * Explorers (z.B. zur Signaturprüfung) verwendet werden kann. Ein Button
+ * erscheint nur, wenn das Format für diesen Schlüssel erzeugt werden konnte.
+ */
+function renderBaseRegistryKeyCopy(array $key): string
+{
+    $formats = [
+        'JWK' => ($key['jwk'] ?? null) !== null
+            ? (string) json_encode($key['jwk'], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            : null,
+        'PEM' => $key['pem'] ?? null,
+    ];
+    $html = '';
+    foreach ($formats as $label => $value) {
+        if ($value === null) {
+            continue;
+        }
+        $title = t('base.copy_key', [$label]);
+        $html .= '<button type="button" class="br-btn br-btn-sm br-btn-icon" data-br-copy-value="' . htmlspecialchars($value) . '"'
+            . ' title="' . htmlspecialchars($title) . '" aria-label="' . htmlspecialchars($title) . '">'
+            . renderBaseRegistryCopyIcons() . htmlspecialchars($label) . '</button>';
+    }
+    return $html === '' ? '-' : '<span class="br-key-copy">' . $html . '</span>';
+}
+
 /** Schlüssel des aktuellen DID-Dokuments. */
 function renderBaseRegistryKeys(array $log): string
 {
@@ -1673,6 +1822,7 @@ function renderBaseRegistryKeys(array $log): string
     $html .= '<div class="table-scroll"><table class="br-table"><thead><tr>'
         . '<th>kid</th><th>' . htmlspecialchars(t('base.col.purpose')) . '</th>'
         . '<th>' . htmlspecialchars(t('base.col.type')) . '</th><th>' . htmlspecialchars(t('base.col.curve')) . '</th>'
+        . '<th>' . htmlspecialchars(t('base.col.public_key')) . '</th>'
         . '</tr></thead><tbody>';
     foreach ($log['keys'] as $key) {
         $html .= '<tr>'
@@ -1680,6 +1830,7 @@ function renderBaseRegistryKeys(array $log): string
             . '<td>' . htmlspecialchars(implode(', ', $key['purposes']) ?: '-') . '</td>'
             . '<td>' . htmlspecialchars($key['type']) . '</td>'
             . '<td>' . htmlspecialchars($key['curve']) . '</td>'
+            . '<td>' . renderBaseRegistryKeyCopy($key) . '</td>'
             . '</tr>';
     }
     return $html . '</tbody></table></div>';
@@ -1710,7 +1861,7 @@ function renderBaseRegistryRaw(array $res, bool $withHeading = true): string
     $html .= '<div class="br-raw-head">'
         . ($withHeading ? '<h4>' . htmlspecialchars(t('base.section.raw')) . '</h4>' : '<span></span>')
         . '<span class="br-raw-actions">'
-        . '<button type="button" class="br-btn" data-br-copy>' . htmlspecialchars(t('base.copy')) . '</button>'
+        . '<button type="button" class="br-btn br-btn-icon" data-br-copy>' . renderBaseRegistryCopyIcons() . htmlspecialchars(t('base.copy')) . '</button>'
         . ($res['url'] !== null ? '<a class="br-link" href="' . htmlspecialchars($res['url']) . '" target="_blank" rel="noopener">' . htmlspecialchars(t('base.open_jsonl')) . ' &#8599;</a>' : '')
         . '</span></div>'
         . '<pre class="br-raw">' . htmlspecialchars(baseRegistryPrettyRaw((string) $res['raw'])) . '</pre>'
