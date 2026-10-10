@@ -1,0 +1,9 @@
+.git
+.gitignore
+.dockerignore
+CLAUDE.md
+Dockerfile
+docker-compose.yml
+screenshot-home.png
+storage/*
+!storage/.gitkeep
