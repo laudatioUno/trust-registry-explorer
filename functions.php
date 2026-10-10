@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 8;
+const CACHE_SCHEMA_VERSION = 9;
 
 // Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
 // iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
@@ -411,6 +411,7 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 'status_value' => $status['status'],
                 'status_label' => $status['label'],
                 'status_error' => $status['error'],
+                'jwt'          => $raw,
             ];
         }
 
@@ -460,9 +461,11 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 foreach ($json['content'] ?? [] as $jwt) {
                     $decoded = decodeJwt($jwt);
                     // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
-                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
+                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht,
+                    // das Original-JWT unter '_jwt' für die Rohdaten-Ansicht.
                     $entry = $decoded['payload'];
                     $entry['_jwt_header'] = $decoded['header'];
+                    $entry['_jwt'] = $jwt;
 
                     $key = isset($entry['jti']) && is_string($entry['jti']) && $entry['jti'] !== ''
                         ? 'jti:' . $entry['jti']
@@ -1056,7 +1059,7 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
     if (isAssocArray($data)) {
         $html = '<table class="detail-kv">';
         foreach ($data as $key => $value) {
-            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
+            if ($key === '_jwt_header' || $key === '_jwt' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
                 continue; // Header wird separat gerendert, diese Felder sind synthetisch (eigene Spalte/Badge)
             }
             $label = htmlspecialchars((string) $key);
@@ -1092,16 +1095,39 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
  * $showHeader = false unterdrückt den Header-Abschnitt (z.B. bei vqPS, wo der
  * Header bei jedem Eintrag identisch ist und daher keinen Mehrwert bietet).
  */
-function renderEntryDetail(array $entry, bool $showHeader = true): string
+function renderEntryDetail(array $entry, bool $showHeader = true, array $jwtDecoder = []): string
 {
     $header = $entry['_jwt_header'] ?? null;
 
-    $html = '';
+    $html = renderJwtDecoderLink($entry['_jwt'] ?? null, $jwtDecoder);
     if ($showHeader && $header !== null) {
         $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.jwt_header')) . '</h4>' . renderDetailTree($header) . '</div>';
     }
     $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.payload_full')) . '</h4>' . renderDetailTree($entry) . '</div>';
     return $html;
+}
+
+/**
+ * Baut den Link zum externen JWT-Decoder (z.B. jwt.io) für das Original-JWT
+ * eines Eintrags bzw. einer Liste. Der Explorer zeigt nur die dekodierten
+ * Felder — so lässt sich das unveränderte JWT (inkl. Signatur) mit einem
+ * Klick im Decoder prüfen. Das JWT steht im Fragment (#token=…), wird also
+ * vom Browser nicht an den Server des Decoders übertragen. Nur Zeichen aus
+ * Base64URL und '.' sind erlaubt, sonst (oder ohne Config) gibt es keinen Link.
+ *
+ * @param array{label?: string, url_template?: string} $jwtDecoder 'jwt_decoder' aus config.php
+ */
+function renderJwtDecoderLink(mixed $jwt, array $jwtDecoder): string
+{
+    $template = $jwtDecoder['url_template'] ?? '';
+    if (!is_string($jwt) || $template === '' || preg_match('/^[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]*)+$/', $jwt) !== 1) {
+        return '';
+    }
+
+    $url   = sprintf($template, $jwt);
+    $label = t('detail.open_jwt', [$jwtDecoder['label'] ?? 'JWT decoder']);
+    return '<div class="jwt-decoder"><a class="jwt-decoder-link" href="' . htmlspecialchars($url) . '" target="_blank" rel="noopener noreferrer">'
+        . htmlspecialchars($label) . ' &#8599;</a></div>';
 }
 
 /**
@@ -1172,6 +1198,8 @@ function filterEntries(array $entries, string $query): array
     }
 
     return array_values(array_filter($entries, function ($entry) use ($groups) {
+        // Das Original-JWT (Base64URL) würde sonst zufällige Treffer liefern
+        unset($entry['_jwt']);
         $haystack = mb_strtolower(flattenForSearch($entry));
         foreach ($groups as $terms) {
             foreach ($terms as $term) {
