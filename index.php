@@ -669,10 +669,8 @@ if ($showPagination) {
                 <?php if ($perPage !== $config['page_size']): ?>
                     <input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>">
                 <?php endif; ?>
-                <?php if ($totalFiltered > $pageSize || $fetchedCount > $pageSize): ?>
-                    <input type="text" name="q" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
-                    <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
-                <?php endif; ?>
+                <input type="text" name="q" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
+                <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
             </form>
             <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>">Refresh</a>
             <?php if ($specUrl !== null): ?>
