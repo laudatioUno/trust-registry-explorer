@@ -91,10 +91,10 @@ function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, arr
  * Seite wird auf 0 zurückgesetzt, per_page bleibt erhalten (wie bei anderen
  * Navigationen innerhalb derselben Tabelle).
  */
-function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPage, string $colKey, ?string $currentSortKey, string $currentSortDir): string
+function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPage, string $colKey, ?string $currentSortKey, string $currentSortDir, ?string $statusFilter = null): string
 {
     $nextDir = ($currentSortKey === $colKey && $currentSortDir === 'asc') ? 'desc' : 'asc';
-    return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage]);
+    return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage, 'status' => $statusFilter]);
 }
 
 /**
@@ -130,6 +130,10 @@ function renderInfoIcon(string $key, bool $mobileOnly = false): string
 }
 
 $errorMessage = null;
+$hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
+$statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
+$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
+$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
 $entries = [];
 $fetchedCount = 0;
 $listMeta = null;
@@ -143,6 +147,18 @@ if ($apiKey !== null) {
         $entries = $fetched['entries'];
         $listMeta = $fetched['list_meta'];
         $fetchedCount = count($entries);
+
+        // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
+        // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
+        // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
+        if (!empty($apiCfg['row_status'])) {
+            $hasStatusFilter = true;
+            $statusCounts = statusBucketCounts($entries);
+            if ($statusFilter === 'valid') {
+                $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
+            }
+        }
+
         $entries = filterEntries($entries, $query);
 
         if ($sortKey !== null) {
@@ -234,6 +250,24 @@ if ($showPagination) {
     .api-chips a { padding: 6px 14px; font-size: 13px; border-radius: 16px; border: 1px solid var(--border); text-decoration: none; color: var(--text-2); background: var(--surface); }
     .api-chips a.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: bold; }
     .api-chips small { color: var(--text-3); margin-left: 4px; }
+
+    .status-filter { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); background: var(--accent-soft-2); border-radius: 8px; }
+    .status-filter-label { font-size: 12px; font-weight: bold; color: var(--text-2); }
+    .status-seg { display: inline-flex; border: 1px solid var(--accent-fill); border-radius: 20px; overflow: hidden; }
+    .status-seg a { padding: 6px 14px; font-size: 13px; text-decoration: none; color: var(--accent); background: var(--surface); }
+    .status-seg a + a { border-left: 1px solid var(--accent-fill); }
+    .status-seg a.active { background: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
+    .status-seg small { font-size: 11px; opacity: .8; margin-left: 2px; }
+    .status-filter-note { font-size: 12px; color: var(--text-2); }
+    .status-filter-reset { margin-left: auto; font-size: 12px; font-weight: bold; color: var(--accent); text-decoration: none; }
+    .status-filter-reset:hover { text-decoration: underline; }
+    .status-filter-warning { margin: -4px 0 12px; padding: 8px 14px; font-size: 12px; background: var(--warning-bg); color: var(--warning-text); border-radius: 8px; }
+    @media (max-width: 640px) {
+        .status-filter { flex-direction: column; align-items: stretch; }
+        .status-seg { display: flex; }
+        .status-seg a { flex: 1; text-align: center; padding: 12px 8px; }
+        .status-filter-reset { margin-left: 0; }
+    }
 
     .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
     /* URL bricht auf max. 2 Zeilen um; würde eine 3. Zeile nötig, wird mit "…"
@@ -631,6 +665,7 @@ if ($showPagination) {
             <form method="get">
                 <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                 <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
                 <?php if ($perPage !== $config['page_size']): ?>
                     <input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>">
                 <?php endif; ?>
@@ -639,7 +674,7 @@ if ($showPagination) {
                     <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
                 <?php endif; ?>
             </form>
-            <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null]))) ?>">Refresh</a>
+            <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>">Refresh</a>
             <?php if ($specUrl !== null): ?>
                 <a class="toolbar-btn spec-btn" href="<?= htmlspecialchars($specUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($apiKey) ?> API Spec ↗</a>
             <?php endif; ?>
@@ -697,6 +732,34 @@ if ($showPagination) {
     <?php else: ?>
 
         <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url']); ?>
+        <?php if ($hasStatusFilter && $statusCounts !== null):
+            $filterBase = ['per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null];
+            $urlAll   = buildUrl($envKey, $apiKey, $query, 0, $filterBase);
+            $urlValid = buildUrl($envKey, $apiKey, $query, 0, $filterBase + ['status' => 'valid']);
+            $hiddenTotal = $statusCounts['revoked'] + $statusCounts['suspended'] + $statusCounts['unknown'];
+            $hiddenParts = [];
+            if ($statusCounts['revoked'] > 0)   { $hiddenParts[] = t('status_filter.n_revoked', [$statusCounts['revoked']]); }
+            if ($statusCounts['suspended'] > 0) { $hiddenParts[] = t('status_filter.n_suspended', [$statusCounts['suspended']]); }
+            if ($statusCounts['unknown'] > 0)   { $hiddenParts[] = t('status_filter.n_unknown', [$statusCounts['unknown']]); }
+        ?>
+            <div class="status-filter" role="group" aria-label="<?= htmlspecialchars(t('status_filter.label')) ?>">
+                <span class="status-filter-label"><?= htmlspecialchars(t('status_filter.label')) ?></span>
+                <div class="status-seg">
+                    <a href="<?= htmlspecialchars($urlAll) ?>" class="<?= $statusFilter === '' ? 'active' : '' ?>"<?= $statusFilter === '' ? ' aria-current="true"' : '' ?>><?= htmlspecialchars(t('status_filter.all')) ?> <small><?= $fetchedCount ?></small></a>
+                    <a href="<?= htmlspecialchars($urlValid) ?>" class="<?= $statusFilter === 'valid' ? 'active' : '' ?>"<?= $statusFilter === 'valid' ? ' aria-current="true"' : '' ?>><?= $statusFilter === 'valid' ? '&#10003; ' : '' ?><?= htmlspecialchars(t('status_filter.valid')) ?> <small><?= $statusCounts['valid'] ?></small></a>
+                </div>
+                <?php if ($statusFilter === 'valid'): ?>
+                    <?php if ($hiddenTotal > 0): ?>
+                        <span class="status-filter-note"><?= htmlspecialchars(t('status_filter.hidden', [$hiddenTotal])) ?>: <?= htmlspecialchars(implode(' · ', $hiddenParts)) ?></span>
+                    <?php endif; ?>
+                    <a class="status-filter-reset" href="<?= htmlspecialchars($urlAll) ?>"><?= htmlspecialchars(t('status_filter.reset')) ?> &#10005;</a>
+                <?php endif; ?>
+            </div>
+            <?php if ($statusFilter === 'valid' && $statusCounts['unknown'] > 0): ?>
+                <div class="status-filter-warning"><?= htmlspecialchars(t('status_filter.unknown_warning', [$statusCounts['unknown']])) ?></div>
+            <?php endif; ?>
+        <?php endif; ?>
+
         <div class="table-scroll">
         <table>
             <thead>
@@ -705,7 +768,7 @@ if ($showPagination) {
                         <?php
                             $isSorted = $sortKey === $col['key'];
                             $arrow = $isSorted ? ($sortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#8693;';
-                            $sortUrl = buildSortUrl($envKey, $apiKey, $query, $perPage, $col['key'], $sortKey, $sortDir);
+                            $sortUrl = buildSortUrl($envKey, $apiKey, $query, $perPage, $col['key'], $sortKey, $sortDir, $statusParam);
                         ?>
                         <th>
                             <a class="sort-link<?= $isSorted ? ' active' : '' ?>" href="<?= htmlspecialchars($sortUrl) ?>">
@@ -730,7 +793,17 @@ if ($showPagination) {
                 $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
                 ?>
                 <?php if (empty($pageEntries)): ?>
-                    <tr><td colspan="<?= $columnCount ?>" style="color:var(--text-3);"><?= htmlspecialchars(t('table.no_entries')) ?></td></tr>
+                    <tr><td colspan="<?= $columnCount ?>" style="color:var(--text-3);">
+                        <?php if ($statusFilter === 'valid' && $query === ''): ?>
+                            <?= htmlspecialchars(t('status_filter.no_valid')) ?>
+                            <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, '', 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
+                        <?php else: ?>
+                            <?= htmlspecialchars(t('table.no_entries')) ?>
+                            <?php if ($statusFilter === 'valid'): ?>
+                                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
+                            <?php endif; ?>
+                        <?php endif; ?>
+                    </td></tr>
                 <?php endif; ?>
                 <?php foreach ($pageEntries as $i => $entry): ?>
                     <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
@@ -795,6 +868,7 @@ if ($showPagination) {
                 <form method="get" class="page-size-form">
                     <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                     <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
                     <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
                     <input type="hidden" name="p" value="0">
                     <label><?= htmlspecialchars(t('pagination.per_page')) ?>
@@ -808,8 +882,8 @@ if ($showPagination) {
 
                 <div class="page-numbers">
                     <?php if ($page > 0): ?>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.first')) ?>">&laquo;</a>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.prev')) ?>">&lsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.first')) ?>">&laquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.prev')) ?>">&lsaquo;</a>
                     <?php else: ?>
                         <span class="disabled nav-edge">&laquo;</span>
                         <span class="disabled nav-step">&lsaquo;</span>
@@ -821,13 +895,13 @@ if ($showPagination) {
                         <?php elseif ($item === $page + 1): ?>
                             <span class="page-num current"><?= $item ?></span>
                         <?php else: ?>
-                            <a class="page-num" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $item - 1, ['per_page' => $perPage])) ?>"><?= $item ?></a>
+                            <a class="page-num" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $item - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>"><?= $item ?></a>
                         <?php endif; ?>
                     <?php endforeach; ?>
 
                     <?php if ($page + 1 < $totalPages): ?>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.next')) ?>">&rsaquo;</a>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage])) ?>" title="<?= htmlspecialchars(t('pagination.last')) ?>">&raquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.next')) ?>">&rsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.last')) ?>">&raquo;</a>
                     <?php else: ?>
                         <span class="disabled nav-step">&rsaquo;</span>
                         <span class="disabled nav-edge">&raquo;</span>
@@ -837,6 +911,7 @@ if ($showPagination) {
                 <form method="get" class="page-jump-form" onsubmit="var i=this.querySelector('input[name=p]'); var v=parseInt(i.value,10); i.value = isNaN(v) ? 0 : Math.max(0, v - 1);">
                     <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                     <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
                     <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
                     <?php if ($perPage !== $config['page_size']): ?><input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>"><?php endif; ?>
                     <span><?= htmlspecialchars(t('pagination.page')) ?></span>
@@ -847,7 +922,7 @@ if ($showPagination) {
         </div>
 
         <p class="meta">
-            <?= htmlspecialchars(t('meta.entries', [$totalFiltered])) ?><?= $query !== '' ? ' ' . htmlspecialchars(t('meta.filtered_from', [$fetchedCount])) : '' ?>
+            <?= htmlspecialchars(t('meta.entries', [$totalFiltered])) ?><?= $query !== '' ? ' ' . htmlspecialchars(t('meta.filtered_from', [$fetchedCount])) : '' ?><?= $statusFilter === 'valid' ? ' ' . htmlspecialchars(t('status_filter.meta', [$fetchedCount])) : '' ?>
             <?php if ($showPagination): ?>
                 &middot; <?= htmlspecialchars(t('meta.showing', [$page * $perPage + 1, min($totalFiltered, ($page + 1) * $perPage)])) ?>
             <?php endif; ?>

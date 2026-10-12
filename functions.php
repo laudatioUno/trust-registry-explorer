@@ -210,6 +210,37 @@ function attachRowStatuses(array $entries): array
 }
 
 /**
+ * Ordnet einen Eintrag (mit '_status_value' aus attachRowStatuses) einer von
+ * vier Gruppen zu: 'valid' (Statuslist-Wert 0), 'revoked' (1), 'suspended' (2)
+ * oder 'unknown' (kein Status ermittelbar: keine Statuslist-Referenz,
+ * Statuslist nicht erreichbar, Index ausserhalb, unbekannter Wert).
+ * Nur der Status aus der Statusliste zählt, die Validity (nbf/exp) nicht.
+ */
+function statusBucket(array $entry): string
+{
+    return match ($entry['_status_value'] ?? null) {
+        0       => 'valid',
+        1       => 'revoked',
+        2       => 'suspended',
+        default => 'unknown',
+    };
+}
+
+/**
+ * Zählt die Einträge pro Status-Gruppe (siehe statusBucket()).
+ *
+ * @return array{valid:int, revoked:int, suspended:int, unknown:int}
+ */
+function statusBucketCounts(array $entries): array
+{
+    $counts = ['valid' => 0, 'revoked' => 0, 'suspended' => 0, 'unknown' => 0];
+    foreach ($entries as $entry) {
+        $counts[statusBucket($entry)]++;
+    }
+    return $counts;
+}
+
+/**
  * Reichert jeden Eintrag um '_entity_name' an, nachgeschlagen über die DID
  * in den Einträgen einer ANDEREN API derselben Umgebung (z.B. pvaTS/ncTLS-
  * Zeilen mit dem Namen aus idTS verknüpfen). $didField ist der Feldname, in
