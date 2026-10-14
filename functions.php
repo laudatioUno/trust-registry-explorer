@@ -337,12 +337,13 @@ function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, str
     foreach ($entries as &$entry) {
         $vct = $entry['value'] ?? null;
         $issuers = ($vct !== null && isset($byVct[$vct])) ? $byVct[$vct] : [];
-        // Gezählt werden nur Issuer mit gültigem Status (Statuslist-Wert 0);
-        // widerrufene/suspendierte/unbekannte zählen nicht. Die aufklappbare
-        // Liste zeigt weiterhin ALLE Issuer samt Status.
-        $entry['_issuer_count'] = count(array_filter($issuers, static fn (array $i): bool => statusBucket($i) === 'valid'));
+        // Nur Issuer mit gültigem Status (Statuslist-Wert 0) werden gezählt und
+        // in der aufklappbaren Liste angezeigt; widerrufene/suspendierte/
+        // unbekannte nicht. '_issuer_total' hält die Gesamtzahl für den Hinweis.
+        $validIssuers = array_values(array_filter($issuers, static fn (array $i): bool => statusBucket($i) === 'valid'));
+        $entry['_issuer_count'] = count($validIssuers);
         $entry['_issuer_total'] = count($issuers);
-        $entry['_issuers'] = $issuers;
+        $entry['_issuers'] = $validIssuers;
     }
     unset($entry);
 
