@@ -1,0 +1,52 @@
+# Docker-Compose-Setup für den swiyu Trust Registry Explorer.
+#
+#   docker compose up -d --build     -> http://localhost:8080
+#
+# Beide Services nutzen dasselbe Image und teilen sich das Volume für
+# storage/ (SQLite-History-Datenbank + collect.log), damit die Daten
+# Neustarts und Image-Updates überdauern.
+services:
+  web:
+    build: .
+    image: trust-registry-explorer
+    restart: unless-stopped
+    ports:
+      - "${TRE_PORT:-8080}:80"
+    volumes:
+      - storage:/var/www/html/storage
+      # Alternative: Bind Mount (vorher einmalig "chown 33:33 storage"):
+      # - ./storage:/var/www/html/storage
+      # Eigene Konfiguration ohne Image-Rebuild:
+      # - ./config.php:/var/www/html/config.php:ro
+
+  # Sammelt beim Start und danach alle COLLECT_INTERVAL_HOURS Stunden die
+  # History-Zählungen — bewusst ohne cron, die genaue Uhrzeit spielt für den
+  # History-Chart keine Rolle. Ungültige Werte (leer, 0, keine Ganzzahl)
+  # fallen auf 24 zurück, damit die Schleife nie ungebremst die APIs abfragt.
+  collector:
+    build: .
+    image: trust-registry-explorer
+    restart: unless-stopped
+    user: www-data
+    environment:
+      COLLECT_INTERVAL_HOURS: ${COLLECT_INTERVAL_HOURS:-24}
+    command:
+      - sh
+      - -c
+      - |
+        h="$${COLLECT_INTERVAL_HOURS:-24}"
+        case "$$h" in ''|*[!0-9]*|0) h=24 ;; esac
+        echo "Collector: Intervall $$h h"
+        while :; do
+          php /var/www/html/collect.php
+          sleep $$((h * 3600))
+        done
+    healthcheck:
+      disable: true
+    volumes:
+      - storage:/var/www/html/storage
+      # - ./storage:/var/www/html/storage
+      # - ./config.php:/var/www/html/config.php:ro
+
+volumes:
+  storage:
