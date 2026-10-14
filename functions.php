@@ -11,10 +11,16 @@ declare(strict_types=1);
  */
 const CACHE_SCHEMA_VERSION = 8;
 
-// Paginierte JWT-APIs: Seitengrösse (die Registry kappt bei 50) und maximale
-// Anzahl Durchläufe, um durch instabile Sortierung verpasste Einträge nachzuholen.
-const PAGINATED_PAGE_SIZE = 50;
-const PAGINATED_MAX_PASSES = 4;
+// Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
+// iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
+// ist (ein eindeutiges Sortierfeld gibt es nicht; erlaubt sind nur typ, alg,
+// kid, profile_version, iat, exp, nbf). Deshalb wird in mehreren Durchläufen
+// mit wechselnder Seitengrösse (Maximum der Registry: 50) und wechselnder
+// Sortierrichtung geladen und vereinigt — die Gleichstände fallen jedes Mal
+// anders, so dass nach 2–3 Durchläufen alles da ist.
+const PAGINATED_PASSES = [
+    [50, 'asc'], [47, 'desc'], [43, 'asc'], [41, 'desc'], [37, 'asc'], [31, 'desc'],
+];
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -412,19 +418,17 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
     }
 
     if ($apiCfg['mode'] === 'paginated_jwt') {
-        // Die Registry sortiert nach Ausstellzeit (Sekunden-Auflösung); bei
-        // gleichem Zeitstempel ist die Reihenfolge zwischen zwei Seiten-Abrufen
-        // NICHT stabil. Ein Eintrag kann daher auf zwei Seiten auftauchen
-        // (Duplikat) und ein anderer auf keiner (fehlt). Gegenmassnahme:
-        // Einträge über ihre jti eindeutig machen und, falls weniger Einträge
-        // da sind als page.totalElements meldet, weitere Durchläufe machen und
-        // nur die noch fehlenden ergänzen (max. PAGINATED_MAX_PASSES).
+        // Siehe PAGINATED_PASSES: Einträge über ihre jti eindeutig machen und so
+        // lange weitere Durchläufe machen, bis page.totalElements erreicht ist.
         $entries = [];
         $seen = [];
         $totalElements = null;
+        $useSort = true;
 
-        for ($pass = 0; $pass < PAGINATED_MAX_PASSES; $pass++) {
-            $before = count($entries);
+        foreach (PAGINATED_PASSES as [$size, $dir]) {
+            $sort = $useSort
+                ? '&sort=iat%2C' . $dir . '&sort=nbf%2C' . $dir . '&sort=exp%2C' . $dir
+                : '';
             $page = 0;
             $totalPages = 1;
 
@@ -438,8 +442,20 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
                 // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
                 // (Status-Badge / Validity-Badge).
-                $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=' . PAGINATED_PAGE_SIZE;
-                $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=' . $size . $sort;
+                try {
+                    $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                } catch (RuntimeException $e) {
+                    // Eine API, die das sort-Argument ablehnt: ohne Sortierung neu starten.
+                    if ($sort !== '' && $page === 0) {
+                        $useSort = false;
+                        $sort = '';
+                        $pagedUrl = $url . '?filterActive=false&page=0&size=' . $size;
+                        $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                    } else {
+                        throw $e;
+                    }
+                }
 
                 foreach ($json['content'] ?? [] as $jwt) {
                     $decoded = decodeJwt($jwt);
@@ -465,9 +481,8 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 $page++;
             } while ($page < $totalPages);
 
-            // Fertig, wenn vollständig oder wenn der Durchlauf nichts Neues brachte
-            // bzw. die API keine Gesamtanzahl nennt.
-            if ($totalElements === null || count($entries) >= $totalElements || count($entries) === $before) {
+            // Vollständig — oder die API nennt keine Gesamtanzahl (dann reicht ein Durchlauf).
+            if ($totalElements === null || count($entries) >= $totalElements) {
                 break;
             }
         }
