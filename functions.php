@@ -912,6 +912,43 @@ function formatValidityBadgeCell(array $entry): string
 }
 
 /**
+ * Text einer Tabellenzelle für den CSV-Export: dieselben Formatter wie die
+ * HTML-Tabelle, danach als Klartext (Status/Validity ohne Pille, <br> wird
+ * zu einem Zeilenumbruch in der Zelle).
+ */
+function exportCellText(array $entry, array $col, string $envKey, string $issuerApiKey): string
+{
+    $html = match ($col['type']) {
+        'multilang'     => formatMultilangCell($entry, $col['key']),
+        'registry_ids'  => formatRegistryIdsCell(getPath($entry, $col['key'])),
+        'status_badge'  => formatStatusBadgeCell($entry),
+        'vct_values'    => formatVctValuesCell($entry),
+        'can_issue'     => formatCanIssueCell($entry),
+        'validity_badge' => formatValidityBadgeCell($entry),
+        'issuer_count'  => formatIssuerCountCell($entry, $envKey, $issuerApiKey),
+        default         => formatCellValue(getPath($entry, $col['key']), $col['type']),
+    };
+
+    $text = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+    $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return trim($text);
+}
+
+/**
+ * Maskiert einen Wert für eine CSV-Zelle (Trennzeichen ';', Anführungszeichen
+ * verdoppelt). Werte stammen aus externen Registries: beginnt ein Wert mit
+ * =, +, @ (oder '-' gefolgt von weiterem Text), würde Excel ihn als Formel
+ * auswerten — dem wird ein Apostroph vorangestellt (CSV-/Formula-Injection).
+ */
+function csvCell(string $value): string
+{
+    if ($value !== '' && (strpbrk($value[0], "=+@\t\r") !== false || ($value[0] === '-' && strlen($value) > 1 && !is_numeric($value)))) {
+        $value = "'" . $value;
+    }
+    return '"' . str_replace('"', '""', $value) . '"';
+}
+
+/**
  * Prüft, ob ein Array assoziativ ist (vs. einer sequentiellen Liste entspricht).
  */
 function isAssocArray(array $arr): bool

@@ -178,6 +178,27 @@ if ($apiKey !== null) {
     }
 }
 
+// CSV-Export der Tabelle genau so, wie sie angezeigt wird: alle Zeilen, die
+// Suche, Status-Filter und Sortierung durchlaufen haben (nicht nur die aktuelle
+// Seite), mit denselben Spalten wie die Tabelle in Klartext. Die Spalte
+// "Base Registry" (per AJAX nachgeladen) ist bewusst nicht enthalten.
+if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
+    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-store');
+
+    $out = fopen('php://output', 'wb');
+    fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
+    $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
+    fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
+    foreach ($entries as $entry) {
+        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
+    }
+    fclose($out);
+    exit;
+}
+
 $pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
 $totalFiltered = count($entries);
 $showPagination = $totalFiltered > $pageSize;
@@ -673,6 +694,9 @@ if ($showPagination) {
                 <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
             </form>
             <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>">Refresh</a>
+            <?php if ($errorMessage === null && $apiKey !== null): ?>
+                <a class="toolbar-btn spec-btn" title="<?= htmlspecialchars(t('toolbar.export_csv_title')) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['export' => 'csv', 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.export_csv')) ?></a>
+            <?php endif; ?>
             <?php if ($specUrl !== null): ?>
                 <a class="toolbar-btn spec-btn" href="<?= htmlspecialchars($specUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($apiKey) ?> API Spec ↗</a>
             <?php endif; ?>
