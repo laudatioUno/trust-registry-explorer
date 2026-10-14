@@ -137,6 +137,8 @@ Three files, each with a single responsibility:
 
 Petrol (`#0F6B72` light / `#4FB8AE` dark) and Gold (`#D9A62B` light / `#E8B93E` dark) are the product's two colors — used in the logo, the favicon, and reused throughout the UI via `--accent`/`--accent-2` (and their `-fill`/`-soft` variants) in `assets/theme.css`. To restyle the brand, change the values there; nothing elsewhere hardcodes a color.
 
+The registry's page order is not stable between requests (entries with the same issue timestamp can swap pages). Paginated APIs are therefore de-duplicated by `jti` and, if fewer entries than `page.totalElements` arrive, fetched again to fill the gaps (up to 4 passes).
+
 Fetched and decoded entries are cached per environment+API in the PHP session for `cache_ttl` seconds, so paging and searching don't repeatedly hit the upstream API. The "Query" button forces an immediate refresh.
 
 ## Limitations

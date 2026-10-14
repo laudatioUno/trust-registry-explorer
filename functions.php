@@ -9,7 +9,12 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 7;
+const CACHE_SCHEMA_VERSION = 8;
+
+// Paginierte JWT-APIs: Seitengrösse (die Registry kappt bei 50) und maximale
+// Anzahl Durchläufe, um durch instabile Sortierung verpasste Einträge nachzuholen.
+const PAGINATED_PAGE_SIZE = 50;
+const PAGINATED_MAX_PASSES = 4;
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -407,35 +412,65 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
     }
 
     if ($apiCfg['mode'] === 'paginated_jwt') {
+        // Die Registry sortiert nach Ausstellzeit (Sekunden-Auflösung); bei
+        // gleichem Zeitstempel ist die Reihenfolge zwischen zwei Seiten-Abrufen
+        // NICHT stabil. Ein Eintrag kann daher auf zwei Seiten auftauchen
+        // (Duplikat) und ein anderer auf keiner (fehlt). Gegenmassnahme:
+        // Einträge über ihre jti eindeutig machen und, falls weniger Einträge
+        // da sind als page.totalElements meldet, weitere Durchläufe machen und
+        // nur die noch fehlenden ergänzen (max. PAGINATED_MAX_PASSES).
         $entries = [];
-        $page = 0;
-        $totalPages = 1;
+        $seen = [];
+        $totalElements = null;
 
-        do {
-            // Explizit filterActive=false (statt den Parameter wegzulassen):
-            // der Default bei fehlendem Parameter ist serverseitig "true", ein
-            // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
-            // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
-            // needs to validate the statements and cannot assume that all
-            // statements returned are indeed active") — der Explorer holt daher
-            // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
-            // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
-            // (Status-Badge / Validity-Badge).
-            $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=20';
-            $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+        for ($pass = 0; $pass < PAGINATED_MAX_PASSES; $pass++) {
+            $before = count($entries);
+            $page = 0;
+            $totalPages = 1;
 
-            foreach ($json['content'] ?? [] as $jwt) {
-                $decoded = decodeJwt($jwt);
-                // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
-                // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
-                $entry = $decoded['payload'];
-                $entry['_jwt_header'] = $decoded['header'];
-                $entries[] = $entry;
+            do {
+                // Explizit filterActive=false (statt den Parameter wegzulassen):
+                // der Default bei fehlendem Parameter ist serverseitig "true", ein
+                // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
+                // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
+                // needs to validate the statements and cannot assume that all
+                // statements returned are indeed active") — der Explorer holt daher
+                // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
+                // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
+                // (Status-Badge / Validity-Badge).
+                $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=' . PAGINATED_PAGE_SIZE;
+                $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+
+                foreach ($json['content'] ?? [] as $jwt) {
+                    $decoded = decodeJwt($jwt);
+                    // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
+                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
+                    $entry = $decoded['payload'];
+                    $entry['_jwt_header'] = $decoded['header'];
+
+                    $key = isset($entry['jti']) && is_string($entry['jti']) && $entry['jti'] !== ''
+                        ? 'jti:' . $entry['jti']
+                        : 'jwt:' . md5((string) $jwt);
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $entries[] = $entry;
+                }
+
+                $totalPages = (int) ($json['page']['totalPages'] ?? 1);
+                if ($page === 0 && isset($json['page']['totalElements'])) {
+                    $totalElements = (int) $json['page']['totalElements'];
+                }
+                $page++;
+            } while ($page < $totalPages);
+
+            // Fertig, wenn vollständig oder wenn der Durchlauf nichts Neues brachte
+            // bzw. die API keine Gesamtanzahl nennt.
+            if ($totalElements === null || count($entries) >= $totalElements || count($entries) === $before) {
+                break;
             }
-
-            $totalPages = (int) ($json['page']['totalPages'] ?? 1);
-            $page++;
-        } while ($page < $totalPages);
+        }
 
         if (!empty($apiCfg['row_status'])) {
             $entries = attachRowStatuses($entries);
