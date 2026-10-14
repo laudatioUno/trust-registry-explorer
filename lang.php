@@ -108,7 +108,8 @@ return [
         'range.custom' => 'Benutzerdefiniert',
 
         // Statuswerte / Detailansicht / Fehlermeldungen (functions.php)
-        'issuers.none_found'           => 'Keine Issuer für diesen VCT gefunden.',
+        'issuers.none_found'           => 'Keine gültigen Issuer für diesen VCT gefunden.',
+        'issuers.not_counted' => '%d von %d Issuern nicht gezählt (widerrufen, suspendiert oder Status unbekannt)',
         'validity.not_yet_valid'       => 'noch nicht gültig',
         'validity.expired'             => 'abgelaufen',
         'validity.valid'               => 'gültig',
@@ -265,7 +266,8 @@ return [
         'range.all'    => 'All data',
         'range.custom' => 'Custom',
 
-        'issuers.none_found'           => 'No issuers found for this VCT.',
+        'issuers.none_found'           => 'No valid issuers found for this VCT.',
+        'issuers.not_counted' => '%d of %d issuers not counted (revoked, suspended or status unknown)',
         'validity.not_yet_valid'       => 'not yet valid',
         'validity.expired'             => 'expired',
         'validity.valid'               => 'valid',
@@ -422,7 +424,8 @@ return [
         'range.all'    => 'Toutes les données',
         'range.custom' => 'Personnalisé',
 
-        'issuers.none_found'           => 'Aucun émetteur trouvé pour ce VCT.',
+        'issuers.none_found'           => 'Aucun émetteur valide trouvé pour ce VCT.',
+        'issuers.not_counted' => '%d émetteurs sur %d non comptés (révoqués, suspendus ou statut inconnu)',
         'validity.not_yet_valid'       => 'pas encore valide',
         'validity.expired'             => 'expiré',
         'validity.valid'               => 'valide',

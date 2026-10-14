@@ -311,7 +311,7 @@ function buildIssuersByVct(array $piaTsEntries): array
 
 /**
  * Reichert piTLS-Einträge (scalar_list: ['value' => <VCT>]) um
- * '_issuer_count' und '_issuers' (die vollständigen piaTS-Einträge, für die
+ * '_issuer_count' (nur gültige Issuer), '_issuer_total' und '_issuers' (die vollständigen piaTS-Einträge, für die
  * aufklappbare Detailansicht) an — nachgeschlagen über $sourceApiKey
  * (piaTS) derselben Umgebung. Nutzt deren Session-Cache, löst also KEINEN
  * zusätzlichen API-Call aus, wenn piaTS schon geladen war.
@@ -321,6 +321,7 @@ function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, str
     if (!isset($allApis[$sourceApiKey])) {
         foreach ($entries as &$entry) {
             $entry['_issuer_count'] = 0;
+            $entry['_issuer_total'] = 0;
             $entry['_issuers'] = [];
         }
         return $entries;
@@ -336,8 +337,13 @@ function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, str
     foreach ($entries as &$entry) {
         $vct = $entry['value'] ?? null;
         $issuers = ($vct !== null && isset($byVct[$vct])) ? $byVct[$vct] : [];
-        $entry['_issuer_count'] = count($issuers);
-        $entry['_issuers'] = $issuers;
+        // Nur Issuer mit gültigem Status (Statuslist-Wert 0) werden gezählt und
+        // in der aufklappbaren Liste angezeigt; widerrufene/suspendierte/
+        // unbekannte nicht. '_issuer_total' hält die Gesamtzahl für den Hinweis.
+        $validIssuers = array_values(array_filter($issuers, static fn (array $i): bool => statusBucket($i) === 'valid'));
+        $entry['_issuer_count'] = count($validIssuers);
+        $entry['_issuer_total'] = count($issuers);
+        $entry['_issuers'] = $validIssuers;
     }
     unset($entry);
 
@@ -825,14 +831,19 @@ function formatIssuerCountCell(array $entry, string $envKey, string $targetApiKe
         default => $count . ' Issuers',
     };
 
+    // Hinweis, wenn nicht alle Issuer gezählt werden (widerrufen/suspendiert/unbekannt).
+    $total = (int) ($entry['_issuer_total'] ?? $count);
+    $title = $total > $count ? ' title="' . htmlspecialchars(t('issuers.not_counted', [$total - $count, $total])) . '"' : '';
+
     if ($count === 0) {
-        return '<span class="issuer-count issuer-count-zero">' . htmlspecialchars($label) . '</span>';
+        return '<span class="issuer-count issuer-count-zero"' . $title . '>' . htmlspecialchars($label) . '</span>';
     }
 
+    // piaTS wird mit dem Filter "nur gültige" geöffnet (passend zur gezählten Zahl).
     $vct = (string) ($entry['value'] ?? '');
-    $url = '?' . http_build_query(['env' => $envKey, 'api' => $targetApiKey, 'q' => $vct]);
+    $url = '?' . http_build_query(['env' => $envKey, 'api' => $targetApiKey, 'q' => $vct, 'status' => 'valid']);
 
-    return '<a href="' . htmlspecialchars($url) . '" class="issuer-count-link" onclick="event.stopPropagation()">'
+    return '<a href="' . htmlspecialchars($url) . '" class="issuer-count-link"' . $title . ' onclick="event.stopPropagation()">'
         . htmlspecialchars($label) . '</a>';
 }
 
