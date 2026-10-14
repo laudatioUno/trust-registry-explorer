@@ -35,6 +35,8 @@ return [
         'explorer.select_prompt' => 'Bitte oben eine Umgebung und eine API auswählen.',
         'explorer.fetch_error'   => 'Fehler beim Abrufen/Dekodieren: %s',
         'toolbar.search_placeholder' => 'Suchen…',
+        'toolbar.export_csv' => 'CSV exportieren',
+        'toolbar.export_csv_title' => 'Exportiert die Tabelle so, wie sie angezeigt wird (alle Seiten, mit Suche, Filter und Sortierung)',
 
         // Gültigkeits-/Statuspanel einer Trust-List
         'listmeta.hint'               => 'Gültigkeit dieser Trust-List (gilt für die gesamte Liste)',
@@ -201,6 +203,8 @@ return [
         'explorer.select_prompt' => 'Please select an environment and an API above.',
         'explorer.fetch_error'   => 'Error fetching/decoding: %s',
         'toolbar.search_placeholder' => 'Search…',
+        'toolbar.export_csv' => 'Export CSV',
+        'toolbar.export_csv_title' => 'Exports the table as currently shown (all pages, with search, filter and sorting)',
 
         'listmeta.hint'               => 'Validity of this trust list (applies to the entire list)',
         'listmeta.valid_from'         => 'Valid from (nbf)',
@@ -359,6 +363,8 @@ return [
         'explorer.select_prompt' => 'Veuillez sélectionner un environnement et une API ci-dessus.',
         'explorer.fetch_error'   => 'Erreur lors de la récupération/du décodage : %s',
         'toolbar.search_placeholder' => 'Rechercher…',
+        'toolbar.export_csv' => 'Exporter en CSV',
+        'toolbar.export_csv_title' => 'Exporte le tableau tel qu\'affiché (toutes les pages, avec recherche, filtre et tri)',
 
         'listmeta.hint'               => 'Validité de cette trust list (s\'applique à la liste entière)',
         'listmeta.valid_from'         => 'Valide à partir de (nbf)',
