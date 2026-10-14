@@ -35,6 +35,7 @@ return [
         'explorer.select_prompt' => 'Bitte oben eine Umgebung und eine API auswählen.',
         'explorer.fetch_error'   => 'Fehler beim Abrufen/Dekodieren: %s',
         'toolbar.search_placeholder' => 'Suchen…',
+        'toolbar.search_syntax' => 'Mehrere Begriffe werden mit UND verknüpft (optional mit AND). OR für ODER, "…" für exakte Phrase, -Begriff zum Ausschliessen.',
         'toolbar.export_csv' => 'CSV exportieren',
         'toolbar.export_csv_title' => 'Exportiert die Tabelle so, wie sie angezeigt wird (alle Seiten, mit Suche, Filter und Sortierung)',
 
@@ -203,6 +204,7 @@ return [
         'explorer.select_prompt' => 'Please select an environment and an API above.',
         'explorer.fetch_error'   => 'Error fetching/decoding: %s',
         'toolbar.search_placeholder' => 'Search…',
+        'toolbar.search_syntax' => 'Multiple terms are combined with AND (optionally written AND). OR for either, "…" for an exact phrase, -term to exclude.',
         'toolbar.export_csv' => 'Export CSV',
         'toolbar.export_csv_title' => 'Exports the table as currently shown (all pages, with search, filter and sorting)',
 
@@ -363,6 +365,7 @@ return [
         'explorer.select_prompt' => 'Veuillez sélectionner un environnement et une API ci-dessus.',
         'explorer.fetch_error'   => 'Erreur lors de la récupération/du décodage : %s',
         'toolbar.search_placeholder' => 'Rechercher…',
+        'toolbar.search_syntax' => 'Plusieurs termes sont combinés avec ET (AND facultatif). OR pour l\'un ou l\'autre, "…" pour une phrase exacte, -terme pour exclure.',
         'toolbar.export_csv' => 'Exporter en CSV',
         'toolbar.export_csv_title' => 'Exporte le tableau tel qu\'affiché (toutes les pages, avec recherche, filtre et tri)',
 

@@ -1063,19 +1063,68 @@ function flattenForSearch(mixed $value): string
 }
 
 /**
- * Filtert eine Liste von Einträgen anhand eines Suchbegriffs (case-insensitive,
- * über alle Felder des Eintrags hinweg).
+ * Zerlegt eine Suchanfrage in OR-Gruppen aus AND-Termen.
+ * Syntax: Leerzeichen und "AND" verknüpfen mit UND, "OR" mit ODER (bindet
+ * schwächer als UND), "Anführungszeichen" ergeben eine exakte Phrase,
+ * ein vorangestelltes "-" schliesst einen Begriff aus.
+ * Rückgabe: Liste von Gruppen; jede Gruppe ist eine Liste von
+ * ['text' => string (lowercase), 'not' => bool].
+ */
+function parseSearchQuery(string $query): array
+{
+    preg_match_all('/(-?)"([^"]*)"|(\S+)/u', $query, $m, PREG_SET_ORDER);
+    $groups = [[]];
+    foreach ($m as $t) {
+        if (isset($t[3]) && $t[3] !== '') {
+            $word = $t[3];
+            if ($word === 'AND') {
+                continue;
+            }
+            if ($word === 'OR') {
+                if ($groups[count($groups) - 1] !== []) {
+                    $groups[] = [];
+                }
+                continue;
+            }
+            $not = false;
+            if (strlen($word) > 1 && $word[0] === '-') {
+                $not = true;
+                $word = substr($word, 1);
+            }
+            $groups[count($groups) - 1][] = ['text' => mb_strtolower($word), 'not' => $not];
+        } else {
+            $phrase = trim($t[2]);
+            if ($phrase !== '') {
+                $groups[count($groups) - 1][] = ['text' => mb_strtolower($phrase), 'not' => $t[1] === '-'];
+            }
+        }
+    }
+    return array_values(array_filter($groups, fn($g) => $g !== []));
+}
+
+/**
+ * Filtert eine Liste von Einträgen anhand einer Suchanfrage (case-insensitive,
+ * über alle Felder des Eintrags hinweg). Mehrere Begriffe werden mit UND
+ * verknüpft (siehe parseSearchQuery() für OR, Phrasen und Ausschluss).
  */
 function filterEntries(array $entries, string $query): array
 {
-    $query = trim($query);
-    if ($query === '') {
+    $groups = parseSearchQuery(trim($query));
+    if ($groups === []) {
         return $entries;
     }
-    $needle = mb_strtolower($query);
 
-    return array_values(array_filter($entries, function ($entry) use ($needle) {
-        return str_contains(mb_strtolower(flattenForSearch($entry)), $needle);
+    return array_values(array_filter($entries, function ($entry) use ($groups) {
+        $haystack = mb_strtolower(flattenForSearch($entry));
+        foreach ($groups as $terms) {
+            foreach ($terms as $term) {
+                if (str_contains($haystack, $term['text']) === $term['not']) {
+                    continue 2;
+                }
+            }
+            return true;
+        }
+        return false;
     }));
 }
 
