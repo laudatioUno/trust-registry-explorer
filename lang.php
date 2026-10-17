@@ -43,7 +43,7 @@ return [
         'listmeta.hint'               => 'Gültigkeit dieser Trust-List (gilt für die gesamte Liste)',
         'listmeta.valid_from'         => 'Gültig ab (nbf)',
         'listmeta.valid_until'        => 'Gültig bis (exp)',
-        'listmeta.created_at'         => 'Erstellt am (iat)',
+        'listmeta.created_at'         => 'Issued at (iat)',
         'listmeta.status_unavailable' => 'Status nicht abrufbar (%s)',
 
         // Tabelle & Pagination
@@ -211,7 +211,7 @@ return [
         'listmeta.hint'               => 'Validity of this trust list (applies to the entire list)',
         'listmeta.valid_from'         => 'Valid from (nbf)',
         'listmeta.valid_until'        => 'Valid until (exp)',
-        'listmeta.created_at'         => 'Created at (iat)',
+        'listmeta.created_at'         => 'Issued at (iat)',
         'listmeta.status_unavailable' => 'Status unavailable (%s)',
 
         'table.no_entries'    => 'No entries found.',
@@ -372,7 +372,7 @@ return [
         'listmeta.hint'               => 'Validité de cette trust list (s\'applique à la liste entière)',
         'listmeta.valid_from'         => 'Valide à partir de (nbf)',
         'listmeta.valid_until'        => 'Valide jusqu\'à (exp)',
-        'listmeta.created_at'         => 'Créé le (iat)',
+        'listmeta.created_at'         => 'Issued at (iat)',
         'listmeta.status_unavailable' => 'Statut indisponible (%s)',
 
         'table.no_entries'    => 'Aucune entrée trouvée.',
