@@ -103,7 +103,7 @@ Everything that can change — environments, APIs, their columns, and a few glob
         'expandable'  => true, // allow clicking a row to see the full decoded entry
         'columns'     => [
             ['key' => 'sub', 'label' => 'Subject (DID)', 'type' => 'text'],
-            ['key' => 'iat', 'label' => 'Issued At',     'type' => 'unix'],
+            ['key' => 'iat', 'label' => 'Issued at',     'type' => 'unix'],
             // 'text' | 'unix' | 'iso' | 'list' | 'raw_bool' | 'multilang' | 'registry_ids'
         ],
     ],
