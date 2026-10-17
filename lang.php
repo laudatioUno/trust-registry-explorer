@@ -43,7 +43,7 @@ return [
         'listmeta.hint'               => 'Gültigkeit dieser Trust-List (gilt für die gesamte Liste)',
         'listmeta.valid_from'         => 'Gültig ab (nbf)',
         'listmeta.valid_until'        => 'Gültig bis (exp)',
-        'listmeta.created_at'         => 'Issued at (iat)',
+        'listmeta.created_at'         => 'Ausgestellt am (iat)',
         'listmeta.status_unavailable' => 'Status nicht abrufbar (%s)',
 
         // Tabelle & Pagination
@@ -95,6 +95,7 @@ return [
         // englische/technische Spaltentitel sind in beiden Sprachen identisch
         // und direkt in config.php hinterlegt (kein Key nötig).
         'col.flagged_at' => 'Geflaggt am',
+        'col.issued_at' => 'Ausgestellt am',
         'col.reason_de'  => 'Grund (DE)',
         'col.reason_en'  => 'Grund (EN)',
         'col.reason_fr'  => 'Grund (FR)',
@@ -258,6 +259,7 @@ return [
         'chart.axis_count'         => 'Number of Trust Statements',
 
         'col.flagged_at' => 'Flagged At',
+        'col.issued_at' => 'Issued at',
         'col.reason_de'  => 'Reason (DE)',
         'col.reason_en'  => 'Reason (EN)',
         'col.reason_fr'  => 'Reason (FR)',
@@ -372,7 +374,7 @@ return [
         'listmeta.hint'               => 'Validité de cette trust list (s\'applique à la liste entière)',
         'listmeta.valid_from'         => 'Valide à partir de (nbf)',
         'listmeta.valid_until'        => 'Valide jusqu\'à (exp)',
-        'listmeta.created_at'         => 'Issued at (iat)',
+        'listmeta.created_at'         => 'Émis le (iat)',
         'listmeta.status_unavailable' => 'Statut indisponible (%s)',
 
         'table.no_entries'    => 'Aucune entrée trouvée.',
@@ -419,6 +421,7 @@ return [
         'chart.axis_count'         => 'Nombre de Trust Statements',
 
         'col.flagged_at' => 'Signalé le',
+        'col.issued_at' => 'Émis le',
         'col.reason_de'  => 'Motif (DE)',
         'col.reason_en'  => 'Motif (EN)',
         'col.reason_fr'  => 'Motif (FR)',
