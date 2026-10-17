@@ -487,6 +487,13 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
             }
         }
 
+        // Die Durchläufe laden teils aufsteigend; die Anzeige-Reihenfolge soll
+        // aber wie gewohnt "neueste zuerst" sein (iat absteigend, dann nbf).
+        // usort ist stabil: bei Gleichstand bleibt die Lade-Reihenfolge erhalten.
+        usort($entries, static fn(array $a, array $b): int =>
+            [(int) ($b['iat'] ?? 0), (int) ($b['nbf'] ?? 0)] <=> [(int) ($a['iat'] ?? 0), (int) ($a['nbf'] ?? 0)]
+        );
+
         if (!empty($apiCfg['row_status'])) {
             $entries = attachRowStatuses($entries);
         }
