@@ -137,6 +137,8 @@ Three files, each with a single responsibility:
 
 Petrol (`#0F6B72` light / `#4FB8AE` dark) and Gold (`#D9A62B` light / `#E8B93E` dark) are the product's two colors — used in the logo, the favicon, and reused throughout the UI via `--accent`/`--accent-2` (and their `-fill`/`-soft` variants) in `assets/theme.css`. To restyle the brand, change the values there; nothing elsewhere hardcodes a color.
 
+The registry pages through its list by offset and the order of entries with identical `iat`/`nbf`/`exp` is not stable between requests (and there is no unique sort field), so a single run over all pages shows some statements twice and misses others. Paginated APIs are therefore loaded in up to 6 passes with alternating sort direction and page size (50, 47, 43, …), merged and de-duplicated by `jti`, until `page.totalElements` is reached (usually after 2 passes). If an API rejects the `sort` parameter, it is loaded unsorted.
+
 Fetched and decoded entries are cached per environment+API in the PHP session for `cache_ttl` seconds, so paging and searching don't repeatedly hit the upstream API. The "Query" button forces an immediate refresh.
 
 ## Limitations

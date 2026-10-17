@@ -9,7 +9,18 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 7;
+const CACHE_SCHEMA_VERSION = 8;
+
+// Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
+// iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
+// ist (ein eindeutiges Sortierfeld gibt es nicht; erlaubt sind nur typ, alg,
+// kid, profile_version, iat, exp, nbf). Deshalb wird in mehreren Durchläufen
+// mit wechselnder Seitengrösse (Maximum der Registry: 50) und wechselnder
+// Sortierrichtung geladen und vereinigt — die Gleichstände fallen jedes Mal
+// anders, so dass nach 2–3 Durchläufen alles da ist.
+const PAGINATED_PASSES = [
+    [50, 'asc'], [47, 'desc'], [43, 'asc'], [41, 'desc'], [37, 'asc'], [31, 'desc'],
+];
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
@@ -407,35 +418,81 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
     }
 
     if ($apiCfg['mode'] === 'paginated_jwt') {
+        // Siehe PAGINATED_PASSES: Einträge über ihre jti eindeutig machen und so
+        // lange weitere Durchläufe machen, bis page.totalElements erreicht ist.
         $entries = [];
-        $page = 0;
-        $totalPages = 1;
+        $seen = [];
+        $totalElements = null;
+        $useSort = true;
 
-        do {
-            // Explizit filterActive=false (statt den Parameter wegzulassen):
-            // der Default bei fehlendem Parameter ist serverseitig "true", ein
-            // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
-            // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
-            // needs to validate the statements and cannot assume that all
-            // statements returned are indeed active") — der Explorer holt daher
-            // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
-            // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
-            // (Status-Badge / Validity-Badge).
-            $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=20';
-            $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+        foreach (PAGINATED_PASSES as [$size, $dir]) {
+            $sort = $useSort
+                ? '&sort=iat%2C' . $dir . '&sort=nbf%2C' . $dir . '&sort=exp%2C' . $dir
+                : '';
+            $page = 0;
+            $totalPages = 1;
 
-            foreach ($json['content'] ?? [] as $jwt) {
-                $decoded = decodeJwt($jwt);
-                // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
-                // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
-                $entry = $decoded['payload'];
-                $entry['_jwt_header'] = $decoded['header'];
-                $entries[] = $entry;
+            do {
+                // Explizit filterActive=false (statt den Parameter wegzulassen):
+                // der Default bei fehlendem Parameter ist serverseitig "true", ein
+                // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
+                // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
+                // needs to validate the statements and cannot assume that all
+                // statements returned are indeed active") — der Explorer holt daher
+                // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
+                // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
+                // (Status-Badge / Validity-Badge).
+                $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=' . $size . $sort;
+                try {
+                    $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                } catch (RuntimeException $e) {
+                    // Eine API, die das sort-Argument ablehnt: ohne Sortierung neu starten.
+                    if ($sort !== '' && $page === 0) {
+                        $useSort = false;
+                        $sort = '';
+                        $pagedUrl = $url . '?filterActive=false&page=0&size=' . $size;
+                        $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                    } else {
+                        throw $e;
+                    }
+                }
+
+                foreach ($json['content'] ?? [] as $jwt) {
+                    $decoded = decodeJwt($jwt);
+                    // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
+                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
+                    $entry = $decoded['payload'];
+                    $entry['_jwt_header'] = $decoded['header'];
+
+                    $key = isset($entry['jti']) && is_string($entry['jti']) && $entry['jti'] !== ''
+                        ? 'jti:' . $entry['jti']
+                        : 'jwt:' . md5((string) $jwt);
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $entries[] = $entry;
+                }
+
+                $totalPages = (int) ($json['page']['totalPages'] ?? 1);
+                if ($page === 0 && isset($json['page']['totalElements'])) {
+                    $totalElements = (int) $json['page']['totalElements'];
+                }
+                $page++;
+            } while ($page < $totalPages);
+
+            // Vollständig — oder die API nennt keine Gesamtanzahl (dann reicht ein Durchlauf).
+            if ($totalElements === null || count($entries) >= $totalElements) {
+                break;
             }
+        }
 
-            $totalPages = (int) ($json['page']['totalPages'] ?? 1);
-            $page++;
-        } while ($page < $totalPages);
+        // Die Durchläufe laden teils aufsteigend; die Anzeige-Reihenfolge soll
+        // aber wie gewohnt "neueste zuerst" sein (iat absteigend, dann nbf).
+        // usort ist stabil: bei Gleichstand bleibt die Lade-Reihenfolge erhalten.
+        usort($entries, static fn(array $a, array $b): int =>
+            [(int) ($b['iat'] ?? 0), (int) ($b['nbf'] ?? 0)] <=> [(int) ($a['iat'] ?? 0), (int) ($a['nbf'] ?? 0)]
+        );
 
         if (!empty($apiCfg['row_status'])) {
             $entries = attachRowStatuses($entries);
