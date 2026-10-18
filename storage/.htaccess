@@ -1,0 +1,10 @@
+# storage/ enthält Laufzeitdaten (History-SQLite, Log, Preview-Marker).
+# Nichts davon darf über den Webserver abrufbar sein. PHP greift
+# weiterhin per Dateisystem zu, das ist von dieser Regel nicht betroffen.
+<IfModule mod_authz_core.c>
+    Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+</IfModule>
