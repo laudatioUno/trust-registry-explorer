@@ -137,10 +137,7 @@ try {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Swiyu Trust Registry Explorer – History</title>
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="alternate icon" href="assets/favicon.ico">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<?= renderHeadMeta(' – History') ?>
 <link rel="stylesheet" href="assets/theme.css">
 <script src="assets/theme.js"></script>
 <script src="assets/chart.umd.min.js"></script>
@@ -150,7 +147,7 @@ try {
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
     .page-header h1 { margin: 0; }
-    .page-header .brand { display: flex; align-items: center; gap: 10px; }
+    .page-header .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
     .top-nav { display: flex; gap: 6px; align-items: stretch; }
     .top-nav a { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 6px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 20px; text-decoration: none; color: var(--text-2); background: var(--surface); box-sizing: border-box; }
     .top-nav a.active { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
@@ -191,10 +188,10 @@ try {
     }
 </style>
 </head>
-<body>
+<body<?= isPreview() ? ' class="is-preview"' : '' ?>>
 
 <div class="page-header">
-    <div class="brand">
+    <a class="brand" href="index.php" aria-label="Swiyu Trust Registry Explorer">
         <svg class="tre-logo" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">
             <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
             <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
@@ -203,7 +200,8 @@ try {
             <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
         <h1>Swiyu Trust Registry Explorer</h1>
-    </div>
+        <?= renderPreviewBadge() ?>
+    </a>
     <div class="top-nav">
         <a href="index.php">Explorer</a>
         <a href="history.php" class="active">History</a>
