@@ -14,6 +14,7 @@
  */
 
 :root {
+    --logo-grey-bar: #6B7075; --logo-grey-seal: #3C4043; --logo-grey-check: #ffffff;
     --bg: #fafafa;
     --surface: #ffffff;
     --border: #ddd;
@@ -56,7 +57,8 @@
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-        --bg: #14181d;
+        --logo-grey-bar: #9AA0A6; --logo-grey-seal: #D0D3D6; --logo-grey-check: #202124;
+    --bg: #14181d;
         --surface: #1c222a;
         --border: #333c47;
         --border-soft: #2a313a;
@@ -86,6 +88,7 @@
 }
 
 :root[data-theme="dark"] {
+    --logo-grey-bar: #9AA0A6; --logo-grey-seal: #D0D3D6; --logo-grey-check: #202124;
     --bg: #14181d;
     --surface: #1c222a;
     --border: #333c47;
@@ -148,6 +151,10 @@
 /* Badge, das nur auf der Preview-Instanz neben dem Titel erscheint. */
 .env-badge { background: var(--accent-2-fill); color: var(--on-accent-2); font: 700 .7em Arial, sans-serif; letter-spacing: .08em; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
 .tre-logo { flex-shrink: 0; }
+/* Preview-Instanz (body.is-preview): Logo und Spinner eingegraut, >= 4.5:1 gegen --bg */
+.is-preview .tre-logo .tre-bar, .is-preview .tre-spinner .tre-bar { fill: var(--logo-grey-bar); }
+.is-preview .tre-logo .tre-seal, .is-preview .tre-spinner .tre-seal { fill: var(--logo-grey-seal); }
+.is-preview .tre-logo .tre-check, .is-preview .tre-spinner .tre-check { stroke: var(--logo-grey-check); }
 .tre-logo .tre-bar { fill: var(--accent); }
 .tre-logo .tre-seal { fill: var(--accent-2); }
 .tre-logo .tre-check { stroke: var(--on-accent-2); }
