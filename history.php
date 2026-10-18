@@ -188,7 +188,7 @@ try {
     }
 </style>
 </head>
-<body>
+<body<?= isPreview() ? ' class="is-preview"' : '' ?>>
 
 <div class="page-header">
     <a class="brand" href="index.php" aria-label="Swiyu Trust Registry Explorer">
