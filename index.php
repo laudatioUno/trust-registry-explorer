@@ -815,16 +815,39 @@ if ($showPagination) {
                 $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
                 ?>
                 <?php if (empty($pageEntries)): ?>
-                    <tr><td colspan="<?= $columnCount ?>" style="color:var(--text-3);">
-                        <?php if ($statusFilter === 'valid' && $query === ''): ?>
-                            <?= htmlspecialchars(t('status_filter.no_valid')) ?>
-                            <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, '', 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
-                        <?php else: ?>
-                            <?= htmlspecialchars(t('table.no_entries')) ?>
-                            <?php if ($statusFilter === 'valid'): ?>
-                                <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
+                    <tr><td colspan="<?= $columnCount ?>">
+                        <link rel="stylesheet" href="assets/ui-extras.css">
+                        <div class="empty-state">
+                            <span class="empty-icon" role="img" aria-label="<?= htmlspecialchars(t('empty.icon_label')) ?>">
+                                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="M30 30l11 11"/><path d="M16 18v2M26 18v2"/><path d="M17 27c2.5-2.5 5.5-2.5 8 0"/></svg>
+                            </span>
+                            <?php if ($statusFilter === 'valid' && $query === ''): ?>
+                                <div class="empty-title"><?= htmlspecialchars(t('status_filter.no_valid')) ?></div>
+                            <?php else: ?>
+                                <div class="empty-title"><?= htmlspecialchars(t('table.no_entries')) ?></div>
+                                <?php if ($query !== ''): ?>
+                                    <div class="empty-hint"><?= htmlspecialchars(t('empty.hint_search')) ?></div>
+                                <?php endif; ?>
                             <?php endif; ?>
-                        <?php endif; ?>
+                            <div class="empty-actions">
+                                <?php if ($query !== ''): ?>
+                                    <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, '', 0, array_filter(['per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('empty.reset_search')) ?></a>
+                                <?php endif; ?>
+                                <?php if ($statusFilter === 'valid'): ?>
+                                    <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <script>window.UX_CONFIG = <?= json_encode([
+                            'endpoint' => 'ui_extras.php',
+                            'i18n'     => [
+                                'title' => t('ux.title'), 'moves' => t('ux.moves'), 'moves_short' => t('ux.moves_short'),
+                                'close' => t('ux.close'), 'name' => t('ux.name'), 'save' => t('ux.save'), 'again' => t('ux.again'),
+                                'top' => t('ux.top'), 'none' => t('ux.none'), 'won' => t('ux.won'), 'rank' => t('ux.rank'),
+                                'error' => t('ux.error'), 'card' => t('ux.card'),
+                            ],
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
+                        <script src="assets/ui-extras.js"></script>
                     </td></tr>
                 <?php endif; ?>
                 <?php foreach ($pageEntries as $i => $entry): ?>
