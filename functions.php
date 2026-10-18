@@ -68,6 +68,24 @@ function renderPreviewBadge(): string
     return isPreview() ? '<span class="env-badge" title="Preview">PREVIEW</span>' : '';
 }
 
+/** Fusszeile mit Version (Link auf das GitHub-Release) und Repository-Link. */
+function renderFooter(array $config): string
+{
+    $version = trim((string)($config['version'] ?? ''));
+    $repo    = rtrim((string)($config['repo_url'] ?? ''), '/');
+    $out = '<footer class="app-footer">';
+    if ($version !== '') {
+        $label = 'v' . htmlspecialchars($version) . (isPreview() ? ' · preview' : '');
+        $out .= $repo !== ''
+            ? '<a href="' . htmlspecialchars($repo . '/releases/tag/v' . $version) . '" target="_blank" rel="noopener" class="app-version">' . $label . '</a>'
+            : '<span class="app-version">' . $label . '</span>';
+    }
+    if ($repo !== '') {
+        $out .= ($version !== '' ? ' · ' : '') . '<a href="' . htmlspecialchars($repo) . '" target="_blank" rel="noopener">GitHub</a>';
+    }
+    return $out . "</footer>\n";
+}
+
 function base64UrlDecode(string $data): string
 {
     $remainder = strlen($data) % 4;
