@@ -335,6 +335,12 @@ if ($showPagination) {
     tr.detail-row td { padding: 14px 20px; }
     .detail-section { margin-bottom: 14px; }
     .detail-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+    .raw-switch { margin: 0 0 12px; }
+    .raw-view { display: flex; flex-direction: column; gap: 14px; }
+    pre.br-raw.raw-token { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; max-height: 180px; }
+    .list-meta-raw { margin: 12px 0 0; }
+    .list-meta-raw > summary { cursor: pointer; font-size: 13px; font-weight: bold; color: var(--accent); }
+    .list-meta-raw[open] > summary { margin-bottom: 10px; }
     table.detail-kv { width: 100%; border: none; background: transparent; }
     table.detail-kv th { background: transparent; border: none; width: 220px; font-weight: normal; color: var(--text-2); font-size: 12px; vertical-align: top; padding: 3px 8px 3px 0; }
     table.detail-kv td { border: none; padding: 3px 0; font-size: 12px; }
@@ -741,6 +747,12 @@ if ($showPagination) {
                     </span>
                 </div>
             </div>
+            <?php if (!empty($listMeta['jwt'])): ?>
+                <details class="list-meta-raw">
+                    <summary><?= htmlspecialchars(t('detail.view_raw')) ?></summary>
+                    <?= renderRawJwt((string) $listMeta['jwt']) ?>
+                </details>
+            <?php endif; ?>
             <?php if ($listMeta['status_error'] !== null): ?>
                 <p class="list-meta-error"><?= htmlspecialchars(t('listmeta.status_unavailable', [$listMeta['status_error']])) ?></p>
             <?php endif; ?>
@@ -990,6 +1002,7 @@ window.BR_CONFIG = <?= json_encode([
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>
 <script src="assets/base-registry.js"></script>
+<script src="assets/raw-view.js"></script>
 <script>
 document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
     row.addEventListener('click', function () {

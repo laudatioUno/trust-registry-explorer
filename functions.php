@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
  */
-const CACHE_SCHEMA_VERSION = 8;
+const CACHE_SCHEMA_VERSION = 9;
 
 // Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
 // iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
@@ -411,6 +411,7 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 'status_value' => $status['status'],
                 'status_label' => $status['label'],
                 'status_error' => $status['error'],
+                'jwt'          => $raw,
             ];
         }
 
@@ -460,9 +461,11 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 foreach ($json['content'] ?? [] as $jwt) {
                     $decoded = decodeJwt($jwt);
                     // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
-                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
+                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht,
+                    // das Original-JWT unter '_jwt' für die Rohdaten-Ansicht.
                     $entry = $decoded['payload'];
                     $entry['_jwt_header'] = $decoded['header'];
+                    $entry['_jwt'] = $jwt;
 
                     $key = isset($entry['jti']) && is_string($entry['jti']) && $entry['jti'] !== ''
                         ? 'jti:' . $entry['jti']
@@ -1056,7 +1059,7 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
     if (isAssocArray($data)) {
         $html = '<table class="detail-kv">';
         foreach ($data as $key => $value) {
-            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
+            if ($key === '_jwt_header' || $key === '_jwt' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
                 continue; // Header wird separat gerendert, diese Felder sind synthetisch (eigene Spalte/Badge)
             }
             $label = htmlspecialchars((string) $key);
@@ -1091,6 +1094,10 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
  * Eintrag. Der JWT-Header steht zuerst, da er den Payload technisch "einleitet".
  * $showHeader = false unterdrückt den Header-Abschnitt (z.B. bei vqPS, wo der
  * Header bei jedem Eintrag identisch ist und daher keinen Mehrwert bietet).
+ *
+ * Ist das Original-JWT vorhanden ('_jwt'), gibt es oben einen Umschalter
+ * "Aufbereitet | Rohdaten" (wie beim Base Registry): Rohdaten = das unverändert
+ * dekodierte JSON (siehe renderRawJwt()).
  */
 function renderEntryDetail(array $entry, bool $showHeader = true): string
 {
@@ -1101,7 +1108,60 @@ function renderEntryDetail(array $entry, bool $showHeader = true): string
         $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.jwt_header')) . '</h4>' . renderDetailTree($header) . '</div>';
     }
     $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.payload_full')) . '</h4>' . renderDetailTree($entry) . '</div>';
-    return $html;
+
+    $jwt = $entry['_jwt'] ?? null;
+    if (!is_string($jwt) || $jwt === '') {
+        return $html;
+    }
+
+    return '<div class="raw-root">'
+        . '<div class="raw-switch"><div class="br-seg" role="group">'
+        .   '<button type="button" class="active" data-raw-view="parsed">' . htmlspecialchars(t('detail.view_parsed')) . '</button>'
+        .   '<button type="button" data-raw-view="raw">' . htmlspecialchars(t('detail.view_raw')) . '</button>'
+        . '</div></div>'
+        . '<div data-raw-pane="parsed">' . $html . '</div>'
+        . '<div data-raw-pane="raw" hidden>' . renderRawJwt($jwt, $showHeader) . '</div>'
+        . '</div>';
+}
+
+/** Ein JWT-Segment (Base64URL) als formatiertes JSON; bei Fehlern der rohe Text. */
+function prettyJwtSegment(string $segment): string
+{
+    $json = base64UrlDecode($segment);
+    // Als Objekte (nicht assoziativ) dekodieren, damit leere {} nicht zu [] werden.
+    $decoded = json_decode($json);
+    return $decoded === null
+        ? $json
+        : (string) json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * Rohdaten-Ansicht eines JWT: Header und Payload als formatiertes JSON sowie das
+ * Original-JWT (kompakt, inkl. Signatur), je mit Kopieren-Knopf. Reine Anzeige,
+ * es wird nichts an Dritte gesendet.
+ */
+function renderRawJwt(string $jwt, bool $showHeader = true): string
+{
+    $parts = explode('.', trim($jwt));
+    if (count($parts) < 2) {
+        return '';
+    }
+
+    $block = static function (string $title, string $content, bool $pre = true): string {
+        return '<div class="br-raw-wrap raw-block">'
+            . '<div class="br-raw-head"><h4>' . htmlspecialchars($title) . '</h4>'
+            . '<span class="br-raw-actions"><button type="button" class="br-btn" data-raw-copy data-copied="' . htmlspecialchars(t('base.copied')) . '">' . htmlspecialchars(t('base.copy')) . '</button></span></div>'
+            . '<pre class="br-raw' . ($pre ? '' : ' raw-token') . '">' . htmlspecialchars($content) . '</pre>'
+            . '</div>';
+    };
+
+    $html = '';
+    if ($showHeader) {
+        $html .= $block(t('detail.raw_header'), prettyJwtSegment($parts[0]));
+    }
+    $html .= $block(t('detail.raw_payload'), prettyJwtSegment($parts[1]));
+    $html .= $block(t('detail.raw_token'), trim($jwt), false);
+    return '<div class="raw-view">' . $html . '</div>';
 }
 
 /**
@@ -1172,6 +1232,8 @@ function filterEntries(array $entries, string $query): array
     }
 
     return array_values(array_filter($entries, function ($entry) use ($groups) {
+        // Das Original-JWT (Base64URL) würde sonst zufällige Treffer liefern
+        unset($entry['_jwt']);
         $haystack = mb_strtolower(flattenForSearch($entry));
         foreach ($groups as $terms) {
             foreach ($terms as $term) {
