@@ -53,11 +53,18 @@ def clean_body(body, title=""):
 def main():
     repo, tag = sys.argv[1], sys.argv[2]
     prev = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else ""
-    until = commit_date(repo, os.environ.get("NOTES_REF") or tag)
-    since = commit_date(repo, prev) if prev else (sys.argv[4] if len(sys.argv) > 4 else "")
-
-    prs = [p for p in gh(f"repos/{repo}/pulls?state=closed&base=main&per_page=100")
-           if p.get("merged_at") and p["merged_at"] <= until and (not since or p["merged_at"] > since)]
+    ref = os.environ.get("NOTES_REF") or tag
+    all_prs = [p for p in gh(f"repos/{repo}/pulls?state=closed&base=main&per_page=100") if p.get("merged_at")]
+    if prev:
+        # Exakt über die Commits zwischen den Releases (robust gegen Zeitstempel)
+        shas = set()
+        for page in gh(f"repos/{repo}/compare/{prev}...{ref}"):
+            shas.update(c["sha"] for c in page.get("commits", []))
+        prs = [p for p in all_prs if p.get("merge_commit_sha") in shas]
+    else:
+        until = commit_date(repo, ref)
+        since = sys.argv[4] if len(sys.argv) > 4 else ""
+        prs = [p for p in all_prs if p["merged_at"] <= until and (not since or p["merged_at"][:10] >= since)]
     prs.sort(key=lambda p: p["merged_at"])
 
     lines = [f"## What's new in {tag}", ""]
