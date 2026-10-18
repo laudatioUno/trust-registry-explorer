@@ -330,6 +330,8 @@ try {
 <?php endif; ?>
 </div>
 
+<?= renderFooter($config) ?>
+
 <script>
 var form = document.getElementById('historyForm');
 var seriesInput = document.getElementById('seriesInput');

@@ -988,6 +988,8 @@ if ($showPagination) {
 <?php endif; ?>
 </div>
 
+<?= renderFooter($config) ?>
+
 <script>
 window.BR_CONFIG = <?= json_encode([
     'endpoint' => 'base_registry.php',
