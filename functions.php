@@ -1094,40 +1094,74 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
  * Eintrag. Der JWT-Header steht zuerst, da er den Payload technisch "einleitet".
  * $showHeader = false unterdrückt den Header-Abschnitt (z.B. bei vqPS, wo der
  * Header bei jedem Eintrag identisch ist und daher keinen Mehrwert bietet).
+ *
+ * Ist das Original-JWT vorhanden ('_jwt'), gibt es oben einen Umschalter
+ * "Aufbereitet | Rohdaten" (wie beim Base Registry): Rohdaten = das unverändert
+ * dekodierte JSON (siehe renderRawJwt()).
  */
-function renderEntryDetail(array $entry, bool $showHeader = true, array $jwtDecoder = []): string
+function renderEntryDetail(array $entry, bool $showHeader = true): string
 {
     $header = $entry['_jwt_header'] ?? null;
 
-    $html = renderJwtDecoderLink($entry['_jwt'] ?? null, $jwtDecoder);
+    $html = '';
     if ($showHeader && $header !== null) {
         $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.jwt_header')) . '</h4>' . renderDetailTree($header) . '</div>';
     }
     $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.payload_full')) . '</h4>' . renderDetailTree($entry) . '</div>';
-    return $html;
+
+    $jwt = $entry['_jwt'] ?? null;
+    if (!is_string($jwt) || $jwt === '') {
+        return $html;
+    }
+
+    return '<div class="raw-root">'
+        . '<div class="raw-switch"><div class="br-seg" role="group">'
+        .   '<button type="button" class="active" data-raw-view="parsed">' . htmlspecialchars(t('detail.view_parsed')) . '</button>'
+        .   '<button type="button" data-raw-view="raw">' . htmlspecialchars(t('detail.view_raw')) . '</button>'
+        . '</div></div>'
+        . '<div data-raw-pane="parsed">' . $html . '</div>'
+        . '<div data-raw-pane="raw" hidden>' . renderRawJwt($jwt, $showHeader) . '</div>'
+        . '</div>';
+}
+
+/** Ein JWT-Segment (Base64URL) als formatiertes JSON; bei Fehlern der rohe Text. */
+function prettyJwtSegment(string $segment): string
+{
+    $json = base64UrlDecode($segment);
+    // Als Objekte (nicht assoziativ) dekodieren, damit leere {} nicht zu [] werden.
+    $decoded = json_decode($json);
+    return $decoded === null
+        ? $json
+        : (string) json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 }
 
 /**
- * Baut den Link zum externen JWT-Decoder (z.B. jwt.io) für das Original-JWT
- * eines Eintrags bzw. einer Liste. Der Explorer zeigt nur die dekodierten
- * Felder — so lässt sich das unveränderte JWT (inkl. Signatur) mit einem
- * Klick im Decoder prüfen. Das JWT steht im Fragment (#token=…), wird also
- * vom Browser nicht an den Server des Decoders übertragen. Nur Zeichen aus
- * Base64URL und '.' sind erlaubt, sonst (oder ohne Config) gibt es keinen Link.
- *
- * @param array{label?: string, url_template?: string} $jwtDecoder 'jwt_decoder' aus config.php
+ * Rohdaten-Ansicht eines JWT: Header und Payload als formatiertes JSON sowie das
+ * Original-JWT (kompakt, inkl. Signatur), je mit Kopieren-Knopf. Reine Anzeige,
+ * es wird nichts an Dritte gesendet.
  */
-function renderJwtDecoderLink(mixed $jwt, array $jwtDecoder): string
+function renderRawJwt(string $jwt, bool $showHeader = true): string
 {
-    $template = $jwtDecoder['url_template'] ?? '';
-    if (!is_string($jwt) || $template === '' || preg_match('/^[A-Za-z0-9_\-]+(\.[A-Za-z0-9_\-]*)+$/', $jwt) !== 1) {
+    $parts = explode('.', trim($jwt));
+    if (count($parts) < 2) {
         return '';
     }
 
-    $url   = sprintf($template, $jwt);
-    $label = t('detail.open_jwt', [$jwtDecoder['label'] ?? 'JWT decoder']);
-    return '<div class="jwt-decoder"><a class="jwt-decoder-link" href="' . htmlspecialchars($url) . '" target="_blank" rel="noopener noreferrer">'
-        . htmlspecialchars($label) . ' &#8599;</a></div>';
+    $block = static function (string $title, string $content, bool $pre = true): string {
+        return '<div class="br-raw-wrap raw-block">'
+            . '<div class="br-raw-head"><h4>' . htmlspecialchars($title) . '</h4>'
+            . '<span class="br-raw-actions"><button type="button" class="br-btn" data-raw-copy data-copied="' . htmlspecialchars(t('base.copied')) . '">' . htmlspecialchars(t('base.copy')) . '</button></span></div>'
+            . '<pre class="br-raw' . ($pre ? '' : ' raw-token') . '">' . htmlspecialchars($content) . '</pre>'
+            . '</div>';
+    };
+
+    $html = '';
+    if ($showHeader) {
+        $html .= $block(t('detail.raw_header'), prettyJwtSegment($parts[0]));
+    }
+    $html .= $block(t('detail.raw_payload'), prettyJwtSegment($parts[1]));
+    $html .= $block(t('detail.raw_token'), trim($jwt), false);
+    return '<div class="raw-view">' . $html . '</div>';
 }
 
 /**
