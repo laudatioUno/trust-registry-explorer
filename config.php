@@ -26,6 +26,13 @@
 
 return [
 
+    // Anwendungsversion (Semantic Versioning). Wird in der Fusszeile angezeigt
+    // und von der GitHub-Action .github/workflows/release.yml gelesen: ändert
+    // sich dieser Wert auf main, entsteht automatisch Tag + Release (+ ZIP).
+    // Nur im Release-PR anpassen.
+    'version'  => '1.0.0',
+    'repo_url' => 'https://github.com/laudatioUno/trust-registry-explorer',
+
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
     // base_registry_url: Base Registry derselben Umgebung (did.jsonl pro DID,
     //                    siehe 'base_registry' unten)

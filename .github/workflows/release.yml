@@ -1,0 +1,63 @@
+# Erstellt automatisch Tag, GitHub-Release und ZIP, sobald die Version in
+# config.php ('version' => 'X.Y.Z') auf main geändert wird.
+# Existiert der Tag vX.Y.Z bereits, passiert nichts (z.B. bei anderen
+# Änderungen an config.php).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [config.php]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from config.php
+        id: v
+        run: |
+          VERSION=$(grep -oP "^\s*'version'\s*=>\s*'\K[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?(?=')" config.php | head -n1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read a semantic version from config.php"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if the release already exists
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.v.outputs.tag }} already exists, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build ZIP
+        if: steps.exists.outputs.skip == 'false'
+        run: |
+          NAME="trust-registry-explorer-${{ steps.v.outputs.tag }}"
+          git archive --format=zip --prefix="$NAME/" -o "$NAME.zip" HEAD
+          unzip -l "$NAME.zip" | tail -n 3
+
+      - name: Create release
+        if: steps.exists.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          PRE=""
+          case "$TAG" in *-*) PRE="--prerelease" ;; esac
+          gh release create "$TAG" "trust-registry-explorer-$TAG.zip" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --generate-notes $PRE

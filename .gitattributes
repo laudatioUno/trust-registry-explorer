@@ -1,0 +1,4 @@
+# Nicht im Release-ZIP (git archive) enthalten
+.github/ export-ignore
+.gitattributes export-ignore
+screenshot-home.png export-ignore
