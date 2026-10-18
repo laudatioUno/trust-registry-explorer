@@ -21,6 +21,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle. Chart.js is vendored locally (`assets/chart.umd.min.js`) — no CDN dependency, works on hosts without outbound access to third-party script CDNs
 - **Dark mode** — follows the OS/browser color scheme by default; a toggle (🌙/☀️, top right on both pages) lets you override it, remembered across visits. Covers the Explorer, the History page, and the History chart's colors (axes, grid, curves)
 - **Logo & favicon** — a two-color "registry stack" mark (Petrol `#0F6B72` & Gold `#D9A62B`) in the browser tab and next to the title on both pages; the same two colors drive `--accent`/`--accent-2` everywhere else in the UI (active tab, links, buttons, the first two chart curves), so the brand is consistent top to bottom
+- **Preview marker** — an optional `storage/.preview` file switches a deployment into "preview look" (badge, inverted favicon, `[Preview]` tab title, `noindex`); see *Marking a preview instance*. The logo/title in the header is a link back to the home page
 - **Loading spinner** — the logo doubles as a subtle animated indicator (bars pulse, seal pops) shown over the table/chart while a page reload is in flight, e.g. switching to an API with 1'500+ entries (vqPS)
 
 ## Screenshot
@@ -44,6 +45,16 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
    ```
 
 3. Open the page in a browser, pick an environment tab, then an API — that's it, no build step or dependencies to install.
+
+### Marking a preview instance
+
+To make a staging/preview deployment visually distinguishable from production, create an empty marker file on that server only:
+
+```bash
+touch storage/.preview
+```
+
+While the file exists, the app shows a gold "PREVIEW" badge next to the title, uses an inverted (gold/teal) favicon and Apple touch icon, prefixes the browser tab title with `[Preview]`, and sends `noindex, nofollow`. Remove the file (or never create it) and the app looks like production. The marker lives in `storage/`, which is untouched by code deployments, and is listed in `.gitignore`, so the code is identical on the `preview` and `main` branches and no host names end up in the repository.
 
 ### Enabling History tracking
 
@@ -132,6 +143,7 @@ Three files, each with a single responsibility:
 | `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
 | `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
 | `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to. Also exposes `TrustExplorer.attachLoadingOverlay()`, which wires the loading spinner to a page's links/forms |
+| `assets/favicon-preview.svg`, `favicon-preview.ico`, `apple-touch-icon-preview.png` | Inverted-color variants of the logo, used instead of the regular icons while `storage/.preview` exists |
 | `assets/favicon.svg`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png` | The logo mark, rendered to the sizes browsers/OSes expect for a tab icon / bookmark / home-screen icon. Regenerate from `assets/favicon.svg` if the mark ever changes |
 
 ### Brand colors

@@ -25,6 +25,49 @@ const PAGINATED_PASSES = [
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
  */
+
+/**
+ * Preview-Erkennung: Die Instanz gilt als Preview, wenn die Marker-Datei
+ * storage/.preview existiert (leere Datei genügt). Die Datei wird per
+ * .gitignore vom Repository ausgeschlossen und liegt im storage/-Ordner,
+ * der Deployments überlebt - Code ist damit in preview und main identisch.
+ */
+function isPreview(): bool
+{
+    static $preview = null;
+    if ($preview === null) {
+        $preview = is_file(__DIR__ . '/storage/.preview');
+    }
+    return $preview;
+}
+
+/** Seitentitel; in der Preview mit Präfix "[Preview]". */
+function pageTitle(string $suffix = ''): string
+{
+    $title = 'Swiyu Trust Registry Explorer' . $suffix;
+    return isPreview() ? '[Preview] ' . $title : $title;
+}
+
+/** <title>, Favicons und (nur Preview) noindex für den <head>. */
+function renderHeadMeta(string $suffix = ''): string
+{
+    $p = isPreview() ? '-preview' : '';
+    $out  = '<title>' . htmlspecialchars(pageTitle($suffix)) . "</title>\n";
+    $out .= '<link rel="icon" href="assets/favicon' . $p . '.svg" type="image/svg+xml">' . "\n";
+    $out .= '<link rel="alternate icon" href="assets/favicon' . $p . '.ico">' . "\n";
+    $out .= '<link rel="apple-touch-icon" href="assets/apple-touch-icon' . $p . '.png">' . "\n";
+    if (isPreview()) {
+        $out .= '<meta name="robots" content="noindex, nofollow">' . "\n";
+    }
+    return $out;
+}
+
+/** "PREVIEW"-Badge neben dem Seitentitel (leer auf PROD). */
+function renderPreviewBadge(): string
+{
+    return isPreview() ? '<span class="env-badge" title="Preview">PREVIEW</span>' : '';
+}
+
 function base64UrlDecode(string $data): string
 {
     $remainder = strlen($data) % 4;
