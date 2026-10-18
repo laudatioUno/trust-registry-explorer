@@ -142,7 +142,7 @@ try {
 <script src="assets/theme.js"></script>
 <script src="assets/chart.umd.min.js"></script>
 <style>
-    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); }
+    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); display: flex; flex-direction: column; min-height: calc(100vh - 4em); min-height: calc(100dvh - 4em); }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
@@ -179,7 +179,7 @@ try {
     .series-error-note { font-size: 11px; color: var(--warning-text); margin-top: 6px; }
 
     @media (max-width: 640px) {
-        body { margin: 0.75em; }
+        body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
         .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
         .top-nav { justify-content: center; }
         .top-nav a { flex: 1; text-align: center; }

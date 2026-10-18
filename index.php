@@ -224,7 +224,7 @@ if ($showPagination) {
 <script src="assets/theme.js"></script>
 <link rel="stylesheet" href="assets/base-registry.css">
 <style>
-    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); }
+    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); display: flex; flex-direction: column; min-height: calc(100vh - 4em); min-height: calc(100dvh - 4em); }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
@@ -419,7 +419,7 @@ if ($showPagination) {
 
     /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
     @media (max-width: 640px) {
-        body { margin: 0.75em; }
+        body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
 
         .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
         .top-nav { justify-content: center; }
