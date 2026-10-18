@@ -145,6 +145,8 @@
  * Beide zeichnen dasselbe "Registry-Stapel"-Motiv, gefüllt über
  * var(--accent)/var(--accent-2) - zieht Theme-Wechsel automatisch mit.
  * --------------------------------------------------------------------- */
+/* Badge, das nur auf der Preview-Instanz neben dem Titel erscheint. */
+.env-badge { background: var(--accent-2-fill); color: var(--on-accent-2); font: 700 .7em Arial, sans-serif; letter-spacing: .08em; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
 .tre-logo { flex-shrink: 0; }
 .tre-logo .tre-bar { fill: var(--accent); }
 .tre-logo .tre-seal { fill: var(--accent-2); }
