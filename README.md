@@ -143,7 +143,7 @@ Three files, each with a single responsibility:
 | `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
 | `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
 | `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to. Also exposes `TrustExplorer.attachLoadingOverlay()`, which wires the loading spinner to a page's links/forms |
-| `assets/favicon-preview.svg`, `favicon-preview.ico`, `apple-touch-icon-preview.png` | Greyed-out variants of the logo, used instead of the regular icons while `storage/.preview` exists |
+| `assets/favicon-preview.svg`, `favicon-preview.ico`, `apple-touch-icon-preview.png` | Greyed-out variants of the logo (contrast ≥ 4.5:1 against white and against dark `#202124` tab backgrounds; the SVG switches via `prefers-color-scheme`), used instead of the regular icons while `storage/.preview` exists |
 | `assets/favicon.svg`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png` | The logo mark, rendered to the sizes browsers/OSes expect for a tab icon / bookmark / home-screen icon. Regenerate from `assets/favicon.svg` if the mark ever changes |
 
 ### Brand colors
