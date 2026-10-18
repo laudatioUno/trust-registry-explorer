@@ -37,7 +37,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Setup
 
-1. Copy `config.php`, `functions.php`, `index.php`, `history.php`, `collect.php`, the `assets/` folder, and the `storage/` folder (with its `.gitkeep`) into the same directory on your web server (or run locally, see below).
+1. Copy `config.php`, `functions.php`, `index.php`, `history.php`, `collect.php`, the `assets/` folder, and the `storage/` folder (with its `.gitkeep` and `.htaccess`) into the same directory on your web server (or run locally, see below).
 2. Point your web server's document root at that directory, or run it locally for a quick test:
 
    ```bash
@@ -45,6 +45,16 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
    ```
 
 3. Open the page in a browser, pick an environment tab, then an API — that's it, no build step or dependencies to install.
+
+### Protecting `storage/`
+
+`storage/` holds runtime data (the History SQLite database, the collector log, the preview marker) that must not be downloadable. The bundled `storage/.htaccess` denies all web access to the folder on Apache (2.4 and 2.2); PHP still reads and writes it via the file system. Make sure the `.htaccess` file is deployed too (it is a dotfile and easy to miss when copying) and that `AllowOverride` permits it. On **nginx**, `.htaccess` has no effect; add this to the server block instead:
+
+```nginx
+location /storage/ { deny all; }
+```
+
+Check after deployment that `https://your-host/path/storage/history.sqlite` returns 403 (or 404). Alternatively, point `history.db_path` in `config.php` to a directory outside the web root.
 
 ### Marking a preview instance
 
