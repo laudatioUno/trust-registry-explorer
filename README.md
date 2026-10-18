@@ -101,8 +101,10 @@ without it — but to see any data in the History chart:
 
 The app follows [Semantic Versioning](https://semver.org/). The current version is `'version'` at the top of `config.php`; it is shown in the footer of both pages (with a link to the matching GitHub release, plus a link to the repository). On a preview instance the footer adds "· preview".
 
+Assets (`assets/*.css`, `*.js`, favicons) are referenced with a content hash (`assetUrl()` in `functions.php`, e.g. `theme.css?v=1a2b3c4d`), so browsers fetch a changed file immediately after a deployment without clearing the cache.
+
 - **Minor** (`1.x.0`): new features. **Patch** (`1.0.x`): bug fixes. **Major** (`x.0.0`): breaking changes, e.g. a changed `config.php` structure or a manual update step.
-- Releases are created automatically: when a change to `config.php` reaches `main` and `'version'` has no matching tag yet, the workflow `.github/workflows/release.yml` creates the tag `vX.Y.Z`, a GitHub release with generated notes, and attaches `trust-registry-explorer-vX.Y.Z.zip` (built with `git archive`; see `.gitattributes` for excluded files). If the tag already exists, nothing happens.
+- Releases are created automatically: when a change to `config.php` reaches `main` and `'version'` has no matching tag yet, the workflow `.github/workflows/release.yml` creates the tag `vX.Y.Z`, a GitHub release with generated notes, and attaches `trust-registry-explorer-vX.Y.Z.zip` (built with `git archive`; see `.gitattributes` for excluded files). If the tag already exists, nothing happens. The release notes are built by `.github/scripts/release_notes.py` from the PRs merged into `main` since the previous release (PR title plus description, without the test plan). A manual run of the workflow ("Run workflow", optionally with a tag) regenerates the notes of an existing release.
 - Release flow: feature PRs go to `preview` as usual; a small PR to `preview` bumps `'version'` (so the preview already shows the upcoming version); then the `preview` → `main` PR is merged and the release appears on its own. Only that release PR should change `'version'`.
 
 ## Configuration
@@ -154,7 +156,7 @@ Three files, each with a single responsibility:
 | `config.php` | Environments, APIs, paths, column definitions, cache settings, History settings — the only file most extensions require |
 | `functions.php` | JWT decoding, HTTP fetching (incl. following pagination), full-text search, per-entry detail rendering, cross-API DID search, History helpers (counting, SQLite access, time-range resolution) |
 | `index.php` | The UI: environment tabs, API selector, DID search bar, table/card rendering, pagination |
-| `.github/workflows/release.yml`, `.gitattributes` | Release automation (tag, GitHub release, ZIP on a version change in `config.php`) and the list of files kept out of the ZIP |
+| `.github/workflows/release.yml`, `.github/scripts/release_notes.py`, `.gitattributes` | Release automation (tag, GitHub release, ZIP on a version change in `config.php`) and the list of files kept out of the ZIP |
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
 | `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |

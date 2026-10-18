@@ -220,9 +220,9 @@ if ($showPagination) {
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <?= renderHeadMeta() ?>
-<link rel="stylesheet" href="assets/theme.css">
-<script src="assets/theme.js"></script>
-<link rel="stylesheet" href="assets/base-registry.css">
+<link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('theme.css')) ?>">
+<script src="<?= htmlspecialchars(assetUrl('theme.js')) ?>"></script>
+<link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('base-registry.css')) ?>">
 <style>
     body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); display: flex; flex-direction: column; min-height: calc(100vh - 4em); min-height: calc(100dvh - 4em); }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
@@ -826,7 +826,7 @@ if ($showPagination) {
                 ?>
                 <?php if (empty($pageEntries)): ?>
                     <tr><td colspan="<?= $columnCount ?>">
-                        <link rel="stylesheet" href="assets/ui-extras.css">
+                        <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('ui-extras.css')) ?>">
                         <div class="empty-state">
                             <span class="empty-icon" role="img" aria-label="<?= htmlspecialchars(t('empty.icon_label')) ?>">
                                 <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="M30 30l11 11"/><path d="M16 18v2M26 18v2"/><path d="M17 27c2.5-2.5 5.5-2.5 8 0"/></svg>
@@ -857,7 +857,7 @@ if ($showPagination) {
                                 'error' => t('ux.error'), 'card' => t('ux.card'),
                             ],
                         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
-                        <script src="assets/ui-extras.js"></script>
+                        <script src="<?= htmlspecialchars(assetUrl('ui-extras.js')) ?>"></script>
                     </td></tr>
                 <?php endif; ?>
                 <?php foreach ($pageEntries as $i => $entry): ?>
@@ -1001,8 +1001,8 @@ window.BR_CONFIG = <?= json_encode([
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 </script>
-<script src="assets/base-registry.js"></script>
-<script src="assets/raw-view.js"></script>
+<script src="<?= htmlspecialchars(assetUrl('base-registry.js')) ?>"></script>
+<script src="<?= htmlspecialchars(assetUrl('raw-view.js')) ?>"></script>
 <script>
 document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
     row.addEventListener('click', function () {

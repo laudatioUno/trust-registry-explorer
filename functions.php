@@ -53,9 +53,9 @@ function renderHeadMeta(string $suffix = ''): string
 {
     $p = isPreview() ? '-preview' : '';
     $out  = '<title>' . htmlspecialchars(pageTitle($suffix)) . "</title>\n";
-    $out .= '<link rel="icon" href="assets/favicon' . $p . '.svg" type="image/svg+xml">' . "\n";
-    $out .= '<link rel="alternate icon" href="assets/favicon' . $p . '.ico">' . "\n";
-    $out .= '<link rel="apple-touch-icon" href="assets/apple-touch-icon' . $p . '.png">' . "\n";
+    $out .= '<link rel="icon" href="' . htmlspecialchars(assetUrl('favicon' . $p . '.svg')) . '" type="image/svg+xml">' . "\n";
+    $out .= '<link rel="alternate icon" href="' . htmlspecialchars(assetUrl('favicon' . $p . '.ico')) . '">' . "\n";
+    $out .= '<link rel="apple-touch-icon" href="' . htmlspecialchars(assetUrl('apple-touch-icon' . $p . '.png')) . '">' . "\n";
     if (isPreview()) {
         $out .= '<meta name="robots" content="noindex, nofollow">' . "\n";
     }
@@ -66,6 +66,23 @@ function renderHeadMeta(string $suffix = ''): string
 function renderPreviewBadge(): string
 {
     return isPreview() ? '<span class="env-badge" title="Preview">PREVIEW</span>' : '';
+}
+
+/**
+ * URL einer Datei aus assets/ mit Inhalts-Hash als Cache-Buster
+ * (z.B. assets/theme.css?v=1a2b3c4d). Ändert sich die Datei, ändert sich die
+ * URL, und Browser laden sie neu - ohne dass nach einem Deploy der Cache
+ * geleert werden muss. Fehlt die Datei, wird die URL ohne Parameter geliefert.
+ */
+function assetUrl(string $path): string
+{
+    static $cache = [];
+    if (!isset($cache[$path])) {
+        $file = __DIR__ . '/assets/' . $path;
+        $hash = is_file($file) ? substr((string)md5_file($file), 0, 8) : '';
+        $cache[$path] = 'assets/' . $path . ($hash !== '' ? '?v=' . $hash : '');
+    }
+    return $cache[$path];
 }
 
 /** Fusszeile mit Version (Link auf das GitHub-Release) und Repository-Link. */
