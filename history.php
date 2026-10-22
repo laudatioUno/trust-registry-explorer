@@ -5,6 +5,15 @@ require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
+// Klick auf den "Internal"-Umschalter im Seitenkopf: Cookie setzen + Redirect,
+// muss vor jeglicher Ausgabe passieren (siehe functions.php).
+applyInternalToggle();
+
+// Im aktuellen Modus sichtbare Umgebungen (öffentlich nur PROD/INT-PROD).
+// Serien interner Umgebungen aus einer kopierten URL werden damit unten
+// beim Parsen von ?series= verworfen, solange der interne Modus aus ist.
+$environments = visibleEnvironments($config);
+
 $dbPath       = $config['history']['db_path'] ?? __DIR__ . '/storage/history.sqlite';
 $rangeOptions = $config['history']['range_options'] ?? ['7d' => t('range.7d')];
 
@@ -26,13 +35,13 @@ $selectedSeries = [];
 if ($seriesParam !== null && $seriesParam !== '') {
     foreach (explode(',', $seriesParam) as $pair) {
         [$e, $a] = array_pad(explode(':', $pair, 2), 2, null);
-        if ($e !== null && $a !== null && isset($config['environments'][$e]) && isset($config['apis'][$a])) {
+        if ($e !== null && $a !== null && isset($environments[$e]) && isset($config['apis'][$a])) {
             $selectedSeries[] = ['env' => $e, 'api' => $a];
         }
     }
 } elseif ($seriesParam === null) {
     // Erster Aufruf ohne jegliche Auswahl: sinnvoller Default statt leerer Ansicht.
-    $firstEnv = array_key_first($config['environments']);
+    $firstEnv = array_key_first($environments);
     if ($firstEnv !== null && isset($config['apis']['idTS'])) {
         $selectedSeries[] = ['env' => $firstEnv, 'api' => 'idTS'];
     }
@@ -121,7 +130,7 @@ try {
 
         $s = $entry['s'];
         $chartSeries[] = [
-            'label'      => $config['environments'][$s['env']]['label'] . ' · ' . $config['apis'][$s['api']]['label'],
+            'label'      => envLabel($environments[$s['env']]) . ' · ' . $config['apis'][$s['api']]['label'],
             'data'       => $data,
             'pointCount' => count($entry['rows']),
             'errorCount' => $errorCount,
@@ -201,11 +210,13 @@ try {
         </svg>
         <h1>Swiyu Trust Registry Explorer</h1>
         <?= renderPreviewBadge() ?>
+        <?= renderInternalBadge() ?>
     </a>
     <div class="top-nav">
         <a href="index.php">Explorer</a>
         <a href="history.php" class="active">History</a>
         <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
+        <?= renderInternalToggle() ?>
         <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
             <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
             <a href="<?= htmlspecialchars(langSwitchUrl('en')) ?>" class="lang-btn<?= currentLang() === 'en' ? ' active' : '' ?>">EN</a>
@@ -255,9 +266,9 @@ try {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($config['environments'] as $envKey => $env): ?>
+                <?php foreach ($environments as $envKey => $env): ?>
                     <tr>
-                        <th><?= htmlspecialchars($env['label']) ?></th>
+                        <th><?= htmlspecialchars(envLabel($env)) ?></th>
                         <?php foreach ($config['apis'] as $apiKey => $api): ?>
                             <td>
                                 <input type="checkbox" class="series-checkbox"
@@ -273,8 +284,8 @@ try {
 
         <div class="series-quick-actions">
             <span style="font-size:11px; color:var(--text-3);"><?= htmlspecialchars(t('history.select_label')) ?></span>
-            <?php foreach ($config['environments'] as $envKey => $env): ?>
-                <button type="button" class="quick-btn" onclick="toggleRow('<?= htmlspecialchars($envKey) ?>')"><?= htmlspecialchars(t('history.all_x', [$env['label']])) ?></button>
+            <?php foreach ($environments as $envKey => $env): ?>
+                <button type="button" class="quick-btn" onclick="toggleRow('<?= htmlspecialchars($envKey) ?>')"><?= htmlspecialchars(t('history.all_x', [envLabel($env)])) ?></button>
             <?php endforeach; ?>
             <?php foreach ($config['apis'] as $apiKey => $api): ?>
                 <button type="button" class="quick-btn" onclick="toggleCol('<?= htmlspecialchars($apiKey) ?>')"><?= htmlspecialchars(t('history.all_x', [$api['label']])) ?></button>

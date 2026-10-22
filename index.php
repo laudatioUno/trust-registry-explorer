@@ -5,11 +5,21 @@ require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
 $config = require __DIR__ . '/config.php';
 
+// Klick auf den "Internal"-Umschalter im Seitenkopf: setzt das Cookie und
+// leitet um - muss vor jeglicher Ausgabe passieren (siehe functions.php).
+applyInternalToggle();
+
+// Im aktuellen Modus wählbare Umgebungen: öffentlich nur PROD/INT-PROD,
+// im internen Modus zusätzlich REF/ABN/INT-ABN. Überall ab hier wird NUR
+// noch diese Liste benutzt, damit eine interne Umgebung auch per manuell
+// gesetztem ?env=/?did_env= nicht an den Tabs vorbei geöffnet werden kann.
+$environments = visibleEnvironments($config);
+
 // ---- Parameter aus der URL lesen ----
 
-$envKey = $_GET['env'] ?? array_key_first($config['environments']);
-if (!isset($config['environments'][$envKey])) {
-    $envKey = array_key_first($config['environments']);
+$envKey = $_GET['env'] ?? array_key_first($environments);
+if (!isset($environments[$envKey])) {
+    $envKey = array_key_first($environments);
 }
 
 $apiKey = $_GET['api'] ?? null;
@@ -40,18 +50,18 @@ $sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 
 $didQuery = trim((string) ($_GET['did'] ?? ''));
 $didEnv   = $_GET['did_env'] ?? $envKey;
-if (!isset($config['environments'][$didEnv])) {
+if (!isset($environments[$didEnv])) {
     $didEnv = $envKey;
 }
 $didSearch = null; // ['results' => [...], 'entity_name' => ...] wenn eine Suche aktiv ist
 
 if ($didQuery !== '') {
-    $didBaseUrl = $config['environments'][$didEnv]['base_url'];
+    $didBaseUrl = $environments[$didEnv]['base_url'];
     $didSearch  = searchAcrossApis($didEnv, $didBaseUrl, $config['apis'], $didQuery, $config['cache_ttl']);
 
     // Base Registry: DIDs aus dem Suchbegriff und aus den idTS-Treffern nachschlagen.
     $baseResults  = [];
-    $baseRegUrl   = $config['environments'][$didEnv]['base_registry_url'] ?? null;
+    $baseRegUrl   = $environments[$didEnv]['base_registry_url'] ?? null;
     $baseRegPath  = $config['base_registry']['path_template'] ?? '/api/v1/did/%s/did.jsonl';
     if (is_string($baseRegUrl) && $baseRegUrl !== '') {
         $baseDids = baseRegistryCandidateDids(
@@ -140,7 +150,7 @@ $listMeta = null;
 
 if ($apiKey !== null) {
     $apiCfg = $config['apis'][$apiKey];
-    $baseUrl = $config['environments'][$envKey]['base_url'];
+    $baseUrl = $environments[$envKey]['base_url'];
 
     try {
         $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
@@ -182,8 +192,11 @@ if ($apiKey !== null) {
 // Suche, Status-Filter und Sortierung durchlaufen haben (nicht nur die aktuelle
 // Seite), mit denselben Spalten wie die Tabelle in Klartext. Die Spalte
 // "Base Registry" (per AJAX nachgeladen) ist bewusst nicht enthalten.
+// Im Dateinamen steht der ANGEZEIGTE Umgebungsname (öffentlich also
+// "Production"/"Sandbox", intern der Codename) - passend zu dem, was beim
+// Export auf dem Bildschirm stand.
 if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
-    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
+    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', envLabel($environments[$envKey])), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Cache-Control: no-store');
@@ -496,11 +509,13 @@ if ($showPagination) {
         </svg>
         <h1>Swiyu Trust Registry Explorer</h1>
         <?= renderPreviewBadge() ?>
+        <?= renderInternalBadge() ?>
     </a>
     <div class="top-nav">
         <a href="index.php" class="active">Explorer</a>
         <a href="history.php">History</a>
         <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
+        <?= renderInternalToggle() ?>
         <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
             <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
             <a href="<?= htmlspecialchars(langSwitchUrl('en')) ?>" class="lang-btn<?= currentLang() === 'en' ? ' active' : '' ?>">EN</a>
@@ -519,8 +534,8 @@ if ($showPagination) {
         <?php endforeach; ?>
         <input type="text" name="did" placeholder="<?= htmlspecialchars(t('search.did_placeholder')) ?>" value="<?= htmlspecialchars($didQuery) ?>">
         <select name="did_env">
-            <?php foreach ($config['environments'] as $key => $env): ?>
-                <option value="<?= htmlspecialchars($key) ?>" <?= $key === $didEnv ? 'selected' : '' ?>><?= htmlspecialchars($env['label']) ?></option>
+            <?php foreach ($environments as $key => $env): ?>
+                <option value="<?= htmlspecialchars($key) ?>" <?= $key === $didEnv ? 'selected' : '' ?>><?= htmlspecialchars(envLabel($env)) ?></option>
             <?php endforeach; ?>
         </select>
         <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
@@ -637,9 +652,9 @@ if ($showPagination) {
 </div>
 
 <div class="tabs">
-    <?php foreach ($config['environments'] as $key => $env): ?>
+    <?php foreach ($environments as $key => $env): ?>
         <a href="<?= htmlspecialchars(buildUrl($key, $apiKey, '', 0)) ?>"
-           class="<?= $key === $envKey ? 'active' : '' ?>"><?= htmlspecialchars($env['label']) ?></a>
+           class="<?= $key === $envKey ? 'active' : '' ?>"><?= htmlspecialchars(envLabel($env)) ?></a>
     <?php endforeach; ?>
 </div>
 
@@ -679,7 +694,7 @@ if ($showPagination) {
 <?php else: ?>
 
     <?php
-    $fullUrl      = $config['environments'][$envKey]['base_url'] . $config['apis'][$apiKey]['path'];
+    $fullUrl      = $environments[$envKey]['base_url'] . $config['apis'][$apiKey]['path'];
     $cacheMinutes = (int) round($config['cache_ttl'] / 60);
     $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
     ?>
@@ -763,7 +778,7 @@ if ($showPagination) {
 
     <?php else: ?>
 
-        <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url']); ?>
+        <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($environments[$envKey]['base_registry_url']); ?>
         <?php if ($hasStatusFilter && $statusCounts !== null):
             $filterBase = ['per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null];
             $urlAll   = buildUrl($envKey, $apiKey, $query, 0, $filterBase);

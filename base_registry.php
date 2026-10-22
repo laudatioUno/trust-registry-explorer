@@ -14,6 +14,11 @@ declare(strict_types=1);
  * (environments[ENV].base_registry_url), aus der DID wird nur die UUID übernommen
  * und streng als UUID validiert (siehe baseRegistryDidInfo).
  *
+ * Akzeptiert werden nur die im aktuellen Modus sichtbaren Umgebungen - interne
+ * Umgebungen also nur mit aktivem "Internal"-Umschalter (Cookie, das der
+ * fetch() mitschickt). Damit gilt für diesen Endpoint dieselbe Auswahl wie
+ * für die Tabs in index.php.
+ *
  * i18n.php muss zuerst geladen werden (t(), Sprache aus dem Cookie).
  */
 
@@ -31,16 +36,18 @@ function brJson(array $payload, int $code = 200): never
     exit;
 }
 
+$environments = visibleEnvironments($config);
+
 $envKey = (string) ($_GET['env'] ?? '');
 $did    = trim((string) ($_GET['did'] ?? ''));
 $view   = ($_GET['view'] ?? 'chip') === 'detail' ? 'detail' : 'chip';
 $force  = isset($_GET['refresh']);
 
-if (!isset($config['environments'][$envKey]) || $did === '' || strlen($did) > 400) {
+if (!isset($environments[$envKey]) || $did === '' || strlen($did) > 400) {
     brJson(['status' => 'error', 'label' => '', 'html' => ''], 400);
 }
 
-$registryUrl = $config['environments'][$envKey]['base_registry_url'] ?? null;
+$registryUrl = $environments[$envKey]['base_registry_url'] ?? null;
 if (!is_string($registryUrl) || $registryUrl === '') {
     brJson(['status' => 'error', 'label' => '', 'html' => ''], 400);
 }

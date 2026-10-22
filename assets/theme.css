@@ -146,6 +146,27 @@
 .lang-btn:hover:not(.active) { color: var(--accent); }
 .lang-btn.active { background: var(--accent-fill); color: var(--on-accent); }
 
+/* "Internal"-Umschalter: gleiche Pille wie .top-nav a, mit Zustandspunkt.
+   Aus = unauffällig wie die übrigen Nav-Pillen, Ein = Gold-Akzent, damit der
+   interne Modus nicht versehentlich aktiv bleibt, ohne dass es auffällt. */
+.top-nav .internal-switch {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1;
+    padding: 6px 14px; font-size: 13px; box-sizing: border-box;
+    border: 1px solid var(--border); border-radius: 20px;
+    text-decoration: none; color: var(--text-3); background: var(--surface);
+}
+.top-nav .internal-switch:hover { border-color: var(--accent); color: var(--accent); }
+.top-nav .internal-switch .internal-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--text-3); box-shadow: none;
+}
+.top-nav .internal-switch:hover .internal-dot { background: var(--accent); }
+.top-nav .internal-switch.active {
+    border-color: var(--accent-2); color: var(--accent-2); background: var(--accent-2-soft);
+    font-weight: 600;
+}
+.top-nav .internal-switch.active .internal-dot { background: var(--accent-2); }
+
 /* ---------------------------------------------------------------------
  * Logo (statisch, im Header) & Spinner (animiert, beim Laden).
  * Beide zeichnen dasselbe "Registry-Stapel"-Motiv, gefüllt über
@@ -153,6 +174,9 @@
  * --------------------------------------------------------------------- */
 /* Badge, das nur auf der Preview-Instanz neben dem Titel erscheint. */
 .env-badge { background: var(--accent-2-fill); color: var(--on-accent-2); font: 700 .7em Arial, sans-serif; letter-spacing: .08em; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+/* Badge im internen Modus - gleiche Form, aber als Umriss statt gefüllt,
+   damit es neben einem evtl. gleichzeitigen PREVIEW-Badge unterscheidbar ist. */
+.env-badge-internal { background: transparent; color: var(--accent-2); border: 1px solid var(--accent-2); padding: 2px 7px; }
 .tre-logo { flex-shrink: 0; }
 /* Preview-Instanz (body.is-preview): Logo und Spinner eingegraut, >= 4.5:1 gegen --bg */
 .is-preview .tre-logo .tre-bar, .is-preview .tre-spinner .tre-bar { fill: var(--logo-grey-bar); }

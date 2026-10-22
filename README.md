@@ -6,7 +6,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Features
 
-- **Multiple environments** — REF, ABN, PROD, INT-ABN, INT-PROD (easy to add more)
+- **Multiple environments** — publicly, the app shows the two environments that matter outside the federal administration, under their public names: **Production** and **Sandbox**. `PROD` and `INT-PROD` are internal code names and only appear, together with the internal stages `REF`, `ABN` and `INT-ABN`, once the **Internal** switch in the header is on (see *Public and internal environments*). Easy to add more
 - **Six supported APIs** — `ncTLS`, `piTLS`, `vqPS`, `piaTS`, `pvaTS`, `idTS`
 - **JWT decoding** (header + payload, no signature verification) with human-readable timestamps
 - **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one. Multiple terms are combined with AND (`urn:vct:ch.admin.astra.vz.mdl AND did:tdw:…`, the word `AND` is optional); `OR` matches either, `"exact phrase"` searches a phrase and `-term` excludes entries containing it
@@ -15,7 +15,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Global DID search** — search a single DID across all six APIs at once and see every place it appears, with the entity name (from idTS) shown up front if available
 - **Base Registry integration** — for every idTS entry the DID is looked up in the environment's Base Registry (`<base_registry_url>/api/v1/did/<UUID>/did.jsonl`, UUID = last segment of the DID). The idTS table has a "Base Registry" column showing the number of DID log versions (loaded lazily via AJAX for the visible rows only); the expanded row has a "Base Registry" tab with version history, keys and the raw log. The global DID search shows Trust Registry and Base Registry side by side, with a "View DID log" dialog (parsed / raw). Supports `did:tdw` 0.3 and `did:webvh` 1.0. Signatures / hash chain are *not* verified. DIDs hosted on another registry are shown as "External DID"
 - **Valid-only status filter** — for APIs with a status list per entry (`row_status`: idTS, piaTS, pvaTS) a toggle "All | Valid only" above the table hides everything whose status-list value is not `valid` (revoked, suspended and unknown). Only the status list counts, not the time-based validity. Entries whose status cannot be determined count as not valid, with a warning. The filter is a URL parameter (`&status=valid`) and survives search, sorting, paging and page size
-- **CSV export** — the "Export CSV" button in the toolbar downloads the table exactly as shown: all pages, with the current search, status filter and sorting applied, same columns as the table, statuses as plain text (no coloured pills). UTF-8 with BOM and `;` as separator so Excel opens it directly; the lazily loaded "Base Registry" column and the expanded row content are not included. Cell values starting with `=`, `+`, `@` or `-` are prefixed with an apostrophe to prevent formula injection
+- **CSV export** — the "Export CSV" button in the toolbar downloads the table exactly as shown: all pages, with the current search, status filter and sorting applied, same columns as the table, statuses as plain text (no coloured pills). the file name uses the displayed environment name (`trust-registry-Sandbox-ncTLS-….csv`). UTF-8 with BOM and `;` as separator so Excel opens it directly; the lazily loaded "Base Registry" column and the expanded row content are not included. Cell values starting with `=`, `+`, `@` or `-` are prefixed with an apostrophe to prevent formula injection
 - **Responsive UI** — full table on desktop, stacked card view on mobile, same underlying data and markup
 - **Config-driven** — add a new environment or API by editing `config.php`, no other code changes needed
 - **History tracking** — a nightly cron job records the total number of trust statements per environment/API into a local SQLite database; a chart view (`history.php`) lets you pick a time range and any combination of environment/API curves to compare, with a logarithmic/linear scale toggle. Chart.js is vendored locally (`assets/chart.umd.min.js`) — no CDN dependency, works on hosts without outbound access to third-party script CDNs
@@ -66,6 +66,52 @@ touch storage/.preview
 
 While the file exists, the app shows a gold "PREVIEW" badge next to the title, uses a greyed-out favicon and Apple touch icon, prefixes the browser tab title with `[Preview]`, and sends `noindex, nofollow`. Remove the file (or never create it) and the app looks like production. The marker lives in `storage/`, which is untouched by code deployments, and is listed in `.gitignore`, so the code is identical on the `preview` and `main` branches and no host names end up in the repository.
 
+### Public and internal environments
+
+The Trust Registry exists in five environments, but only two of them are relevant
+outside the federal administration — and those two have a public name that differs
+from the internal code name. By default the app therefore shows exactly this:
+
+| Config key | Public name | Role |
+|---|---|---|
+| `PROD` | **Production** | the live environment (default tab) |
+| `INT-PROD` | **Sandbox** | the "swiyu Sandbox" of the official documentation |
+
+`PROD` and `INT-PROD` are internal code names: they are never shown to the public,
+only used as the technical key (in `?env=…`, the session cache and the History
+database). The internal stages `REF`, `ABN` and `INT-ABN` aren't listed at all.
+
+Flipping the **Internal** switch in the page header (next to the language and theme
+toggles) changes both: all five environments appear — in the environment tabs, the
+environment dropdown of the DID search and the History series matrix — and they are
+labelled with their code names (`PROD`, `INT-PROD`), so internal users see the same
+names as the rest of the infrastructure. An `INTERNAL` badge next to the title makes
+the mode obvious. The choice is stored in the `trustExplorerInternal` cookie (one
+year), so it survives visits per browser — no server-side state, no second
+deployment to maintain.
+
+Both aspects are configured, not hardcoded (see *Adding a new environment*):
+
+- `'internal' => true` — the environment only appears in internal mode.
+- `'public_label' => '…'` — the name shown while the switch is off; without it,
+  `'label'` is used in both modes.
+
+Two things to keep in mind:
+
+- **This is not an access control.** The Trust Registry APIs are publicly reachable
+  and the switch is visible to everyone; it keeps the UI free of environments that
+  only confuse outside visitors. Don't use it to hide anything that actually needs
+  protecting.
+- **The History collector is unaffected.** `collect.php` always records *all*
+  environments, so the internal curves stay continuous and simply aren't offered in
+  the chart while the public mode is active. `history.php` also drops internal
+  series from a copied `?series=…` URL in public mode (turning the switch on brings
+  them back).
+
+While the switch is off, a hand-written `?env=REF` (or `?did_env=`, or an AJAX call
+to `base_registry.php?env=REF`) falls back to a public environment rather than
+opening an internal one, so the two modes stay consistent.
+
 ### Enabling History tracking
 
 The History view (`history.php`) reads from a local SQLite database that a
@@ -115,11 +161,22 @@ Everything that can change — environments, APIs, their columns, and a few glob
 
 ```php
 'environments' => [
-    'REF' => ['label' => 'REF', 'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
+    'PROD' => ['label' => 'PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch'],
     // add a new one the same way:
     'NEW-ENV' => ['label' => 'NEW-ENV', 'base_url' => 'https://your-new-host.example.ch'],
+    // 'internal' => true hides an environment unless the "Internal" switch is on:
+    'REF' => ['label' => 'REF', 'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch', 'internal' => true],
+    // 'public_label' is the name shown while the switch is off ('label' is the
+    // internal code name, shown in internal mode):
+    'INT-PROD' => ['label' => 'INT-PROD', 'public_label' => 'Sandbox', 'base_url' => '…'],
 ],
 ```
+
+The order in `environments` is the order of the tabs, and the first **visible**
+environment is the default selection (Production in public mode). The array key is
+the technical identifier — it ends up in URLs (`?env=INT-PROD`), the session cache
+and the History database, so renaming a key orphans the history collected under the
+old one; change `public_label`, not the key.
 
 ### Adding a new API
 

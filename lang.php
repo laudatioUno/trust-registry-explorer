@@ -15,6 +15,10 @@ return [
         // Navigation / Header
         'nav.theme_toggle_aria' => 'Theme wechseln',
         'nav.lang_toggle_aria'  => 'Sprache wechseln',
+        'nav.internal'           => 'Internal',
+        'nav.internal_on_title'  => 'Interne Umgebungen (REF, ABN, INT-ABN) anzeigen und die internen Codenamen (PROD, INT-PROD) verwenden',
+        'nav.internal_off_title' => 'Nur die öffentlichen Umgebungen (Production, Sandbox) anzeigen',
+        'nav.internal_badge_title' => 'Interner Modus: interne Umgebungen und Codenamen sind sichtbar',
 
         // DID-Suche (index.php)
         'search.did_placeholder' => 'DID durchsuchen (über alle APIs)…',
@@ -209,6 +213,10 @@ return [
     'en' => [
         'nav.theme_toggle_aria' => 'Switch theme',
         'nav.lang_toggle_aria'  => 'Switch language',
+        'nav.internal'           => 'Internal',
+        'nav.internal_on_title'  => 'Show the internal environments (REF, ABN, INT-ABN) and use the internal code names (PROD, INT-PROD)',
+        'nav.internal_off_title' => 'Show only the public environments (Production, Sandbox)',
+        'nav.internal_badge_title' => 'Internal mode: internal environments and code names are visible',
 
         'search.did_placeholder' => 'Search DID (across all APIs)…',
         'search.hint'             => 'Searches all Trust Statements in the selected environment for the entered term (e.g. a DID).',
@@ -392,6 +400,10 @@ return [
     'fr' => [
         'nav.theme_toggle_aria' => 'Changer de thème',
         'nav.lang_toggle_aria'  => 'Changer de langue',
+        'nav.internal'           => 'Internal',
+        'nav.internal_on_title'  => 'Afficher les environnements internes (REF, ABN, INT-ABN) et utiliser les noms de code internes (PROD, INT-PROD)',
+        'nav.internal_off_title' => 'N\'afficher que les environnements publics (Production, Sandbox)',
+        'nav.internal_badge_title' => 'Mode interne : les environnements et noms de code internes sont visibles',
 
         'search.did_placeholder' => 'Rechercher un DID (dans toutes les API)…',
         'search.hint'             => 'Recherche le terme saisi (p. ex. un DID) dans tous les Trust Statements de l\'environnement sélectionné.',

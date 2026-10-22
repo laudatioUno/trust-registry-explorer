@@ -68,6 +68,139 @@ function renderPreviewBadge(): string
     return isPreview() ? '<span class="env-badge" title="Preview">PREVIEW</span>' : '';
 }
 
+/* ---------------------------------------------------------------------
+ * Interner Modus
+ *
+ * Standardmässig zeigt die App nur die öffentlich relevanten Umgebungen
+ * (PROD und INT-PROD/"Sandbox"), also alle ohne 'internal' => true in
+ * config.php. Der Umschalter "Internal" im Seitenkopf schaltet die internen
+ * Umgebungen (REF, ABN, INT-ABN) dazu; die Wahl liegt in einem Cookie (ein
+ * Jahr), überdauert also Besuche, ohne dass es dafür Server-State braucht.
+ *
+ * Das ist bewusst KEIN Schutzmechanismus: die Registry-APIs selbst sind
+ * öffentlich erreichbar und der Umschalter ist für jeden sichtbar. Er räumt
+ * nur die Oberfläche auf, damit Besucherinnen und Besucher von aussen nicht
+ * zwischen fünf Umgebungen raten müssen, von denen drei intern sind.
+ * --------------------------------------------------------------------- */
+
+const INTERNAL_COOKIE = 'trustExplorerInternal';
+
+/** Ist der interne Modus für diesen Request aktiv? */
+function internalMode(): bool
+{
+    static $internal = null;
+    if ($internal === null) {
+        $internal = (($_COOKIE[INTERNAL_COOKIE] ?? '') === '1');
+    }
+    return $internal;
+}
+
+/**
+ * Verarbeitet einen Klick auf den Umschalter (?internal=1 bzw. ?internal=0):
+ * setzt das Cookie und leitet auf dieselbe Seite OHNE diesen Parameter um,
+ * damit die URL sauber bleibt und ein Reload den Modus nicht erneut kippt
+ * (gleiches Muster wie der Sprachwechsel in i18n.php).
+ *
+ * MUSS vor jeglicher Ausgabe aufgerufen werden. Im CLI (collect.php) und
+ * wenn die Header schon raus sind, passiert absichtlich nichts.
+ */
+function applyInternalToggle(): void
+{
+    $requested = $_GET['internal'] ?? null;
+    if (PHP_SAPI === 'cli' || !is_string($requested) || !in_array($requested, ['0', '1'], true) || headers_sent()) {
+        return;
+    }
+
+    setcookie(INTERNAL_COOKIE, $requested, time() + 60 * 60 * 24 * 365, '/');
+
+    $params = $_GET;
+    unset($params['internal']);
+    // Beim Verlassen des internen Modus kann in der URL noch eine interne
+    // Umgebung stehen - weglassen, damit die Seite nicht auf einem Tab landet,
+    // den es gerade nicht mehr gibt (index.php/history.php fallen sonst
+    // ohnehin auf die erste sichtbare Umgebung zurück).
+    if ($requested === '0') {
+        unset($params['env'], $params['did_env'], $params['series']);
+    }
+
+    $query = http_build_query($params);
+    $self = $_SERVER['PHP_SELF'] ?? '';
+    header('Location: ' . $self . ($query !== '' ? '?' . $query : ''));
+    exit;
+}
+
+/**
+ * Die im aktuellen Modus sichtbaren Umgebungen - Reihenfolge wie in
+ * config.php, die erste ist damit die Standardauswahl. Im internen Modus
+ * sind das alle, sonst nur die ohne 'internal' => true.
+ *
+ * Sind ALLE Umgebungen als intern markiert, wird die vollständige Liste
+ * zurückgegeben: eine App ohne jede wählbare Umgebung wäre unbenutzbar.
+ */
+function visibleEnvironments(array $config): array
+{
+    $envs = $config['environments'] ?? [];
+    if (internalMode()) {
+        return $envs;
+    }
+
+    $public = array_filter($envs, static fn (array $env): bool => empty($env['internal']));
+    return $public !== [] ? $public : $envs;
+}
+
+/**
+ * Anzuzeigender Name einer Umgebung. PROD und INT-PROD sind interne
+ * Codenamen; nach aussen heissen die beiden Umgebungen "Production" und
+ * "Sandbox" (siehe 'public_label' in config.php). Im internen Modus steht
+ * überall der Codename, damit intern über dieselben Namen gesprochen wird
+ * wie in der restlichen Infrastruktur.
+ *
+ * Nur die ANZEIGE wechselt: Schlüssel (?env=INT-PROD), Session-Cache und die
+ * History-Datenbank arbeiten unverändert mit dem Codename als Schlüssel.
+ */
+function envLabel(array $env): string
+{
+    if (!internalMode() && isset($env['public_label']) && $env['public_label'] !== '') {
+        return (string) $env['public_label'];
+    }
+    return (string) ($env['label'] ?? '');
+}
+
+/**
+ * URL für den Umschalter: aktuelle Query-Parameter plus internal=0/1 (das
+ * Umschalten selbst inkl. Cookie passiert beim nächsten Request, siehe
+ * applyInternalToggle()).
+ */
+function internalToggleUrl(): string
+{
+    $params = array_merge($_GET, ['internal' => internalMode() ? '0' : '1']);
+    return '?' . http_build_query($params);
+}
+
+/**
+ * Umschalter im Seitenkopf: eine Pille in der Reihe von Sprach- und
+ * Theme-Umschalter. role="switch" + aria-checked, damit Screenreader den
+ * Zustand ansagen; der Zustand ist zusätzlich sichtbar (Punkt + Farbe).
+ */
+function renderInternalToggle(): string
+{
+    $on = internalMode();
+    return '<a class="internal-switch' . ($on ? ' active' : '') . '"'
+        . ' href="' . htmlspecialchars(internalToggleUrl()) . '"'
+        . ' role="switch" aria-checked="' . ($on ? 'true' : 'false') . '"'
+        . ' title="' . htmlspecialchars(t($on ? 'nav.internal_off_title' : 'nav.internal_on_title')) . '">'
+        . '<span class="internal-dot" aria-hidden="true"></span>'
+        . htmlspecialchars(t('nav.internal')) . '</a>';
+}
+
+/** "INTERNAL"-Badge neben dem Seitentitel (nur im internen Modus). */
+function renderInternalBadge(): string
+{
+    return internalMode()
+        ? '<span class="env-badge env-badge-internal" title="' . htmlspecialchars(t('nav.internal_badge_title')) . '">INTERNAL</span>'
+        : '';
+}
+
 /**
  * URL einer Datei aus assets/ mit Inhalts-Hash als Cache-Buster
  * (z.B. assets/theme.css?v=1a2b3c4d). Ändert sich die Datei, ändert sich die

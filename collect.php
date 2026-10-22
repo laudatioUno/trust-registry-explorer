@@ -82,6 +82,11 @@ $runTs = time();
 $total = 0;
 $errors = 0;
 
+// Bewusst ALLE Umgebungen, auch die internen ('internal' => true): die
+// History soll lückenlos weiterlaufen, unabhängig davon, ob die Oberfläche
+// eine Umgebung gerade öffentlich anzeigt. Der "Internal"-Umschalter ist ein
+// Cookie im Browser und für diesen CLI-Lauf ohnehin bedeutungslos; history.php
+// blendet die internen Kurven dann im öffentlichen Modus einfach aus.
 foreach ($config['environments'] as $envKey => $envCfg) {
     foreach ($config['apis'] as $apiKey => $apiCfg) {
         $total++;

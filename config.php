@@ -36,12 +36,28 @@ return [
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
     // base_registry_url: Base Registry derselben Umgebung (did.jsonl pro DID,
     //                    siehe 'base_registry' unten)
+    // internal:          true  -> Umgebung erscheint NUR im internen Modus
+    //                    (Umschalter "Internal" im Seitenkopf, Cookie-basiert,
+    //                    siehe internalMode()/visibleEnvironments() in
+    //                    functions.php). Ohne das Flag gilt eine Umgebung als
+    //                    öffentlich und ist immer sichtbar.
+    //                    Öffentlich relevant sind nur PROD und INT-PROD; die
+    //                    übrigen Umgebungen sind interne Stufen.
+    // label:             interner Name (Codename), wie er im internen Modus
+    //                    angezeigt wird.
+    // public_label:      öffentlicher Name - PROD und INT-PROD sind interne
+    //                    Codenamen, nach aussen heissen die beiden Umgebungen
+    //                    "Production" und "Sandbox" (so auch in der
+    //                    swiyu-Dokumentation). Fehlt der Eintrag, wird 'label'
+    //                    in beiden Modi verwendet (siehe envLabel()).
+    // Die Reihenfolge hier ist auch die Reihenfolge der Umgebungs-Tabs; die
+    // erste SICHTBARE Umgebung ist die Standardauswahl (öffentlich: Production).
     'environments' => [
-        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-r.trust-infra.swiyu.admin.ch'],
-        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu.admin.ch'],
-        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu-int.admin.ch'],
-        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
-        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
+        'PROD'     => ['label' => 'PROD',     'public_label' => 'Production', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
+        'INT-PROD' => ['label' => 'INT-PROD', 'public_label' => 'Sandbox',    'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
+        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-r.trust-infra.swiyu.admin.ch', 'internal' => true],
+        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu.admin.ch', 'internal' => true],
+        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu-int.admin.ch', 'internal' => true],
     ],
 
     // Base Registry: pro DID wird das did.jsonl (did:tdw 0.3 und did:webvh 1.0)
