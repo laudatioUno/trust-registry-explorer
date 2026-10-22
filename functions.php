@@ -2143,3 +2143,37 @@ function renderBaseRegistrySearchPanel(array $results, ?string $entityName): str
 
     return $html . '</div></section>' . $dialogs;
 }
+
+/**
+ * Runder "?"-Button im Seitenkopf: startet die geführte Tour. Ohne JavaScript
+ * (und auf der History-Seite) ist es ein normaler Link auf den Explorer mit
+ * ?tour=1, assets/tour.js fängt den Klick auf dem Explorer selbst ab.
+ */
+function renderTourHelpButton(): string
+{
+    $label = htmlspecialchars(t('tour.help_aria'));
+    return '<a class="tour-help" href="index.php?tour=1" data-tour="help" role="button"'
+        . ' aria-label="' . $label . '" title="' . $label . '">?</a>';
+}
+
+/**
+ * Bindet die geführte Tour ein: Texte der aktiven Sprache als JSON (alle
+ * Keys mit Präfix "tour.", Englisch als Fallback) plus tour.css/tour.js.
+ * Nur auf dem Explorer einbinden, dort läuft die Tour.
+ */
+function renderTourAssets(): string
+{
+    $dict = i18nDict();
+    // Rohtexte (ohne vsprintf): "tour.step" enthält %d-Platzhalter, die JS füllt.
+    $lang = currentLang();
+    $texts = [];
+    foreach (($dict['en'] ?? []) as $key => $fallback) {
+        if (str_starts_with($key, 'tour.')) {
+            $texts[substr($key, 5)] = $dict[$lang][$key] ?? $fallback;
+        }
+    }
+    $json = json_encode($texts, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    return '<script type="application/json" id="tour-data">' . $json . "</script>\n"
+        . '<link rel="stylesheet" href="' . htmlspecialchars(assetUrl('tour.css')) . "\">\n"
+        . '<script src="' . htmlspecialchars(assetUrl('tour.js')) . "\"></script>\n";
+}

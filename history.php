@@ -181,7 +181,7 @@ try {
     @media (max-width: 640px) {
         body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
         .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
-        .top-nav { justify-content: center; }
+        .top-nav { justify-content: center; flex-wrap: wrap; }
         .top-nav a { flex: 1; text-align: center; }
         .history-toolbar { flex-direction: column; align-items: stretch; }
         .apply-btn { margin-left: 0; }
@@ -212,6 +212,7 @@ try {
             <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
         </div>
         <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
+        <?= renderTourHelpButton() ?>
     </div>
 </div>
 

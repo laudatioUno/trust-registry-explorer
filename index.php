@@ -422,7 +422,7 @@ if ($showPagination) {
         body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
 
         .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
-        .top-nav { justify-content: center; }
+        .top-nav { justify-content: center; flex-wrap: wrap; }
         .top-nav a { flex: 1; text-align: center; }
 
         .tabs { gap: 4px; }
@@ -498,8 +498,8 @@ if ($showPagination) {
         <?= renderPreviewBadge() ?>
     </a>
     <div class="top-nav">
-        <a href="index.php" class="active">Explorer</a>
-        <a href="history.php">History</a>
+        <a href="index.php" class="active" data-tour="nav">Explorer</a>
+        <a href="history.php" data-tour="nav">History</a>
         <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
         <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
             <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
@@ -507,10 +507,11 @@ if ($showPagination) {
             <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
         </div>
         <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
+        <?= renderTourHelpButton() ?>
     </div>
 </div>
 
-<div class="did-search">
+<div class="did-search" data-tour="search">
     <form method="get">
         <?php foreach (['env' => $envKey, 'api' => $apiKey, 'q' => $query, 'p' => $page] as $k => $v): ?>
             <?php if ($v !== null && $v !== ''): ?>
@@ -636,16 +637,16 @@ if ($showPagination) {
     <?php endif; ?>
 </div>
 
-<div class="tabs">
+<div class="tabs" data-tour="env">
     <?php foreach ($config['environments'] as $key => $env): ?>
         <a href="<?= htmlspecialchars(buildUrl($key, $apiKey, '', 0)) ?>"
            class="<?= $key === $envKey ? 'active' : '' ?>"><?= htmlspecialchars($env['label']) ?></a>
     <?php endforeach; ?>
 </div>
 
-<div class="api-chips">
+<div class="api-chips" data-tour="apis">
     <?php foreach ($config['apis'] as $key => $api): ?>
-        <a href="<?= htmlspecialchars(buildUrl($envKey, $key, '', 0)) ?>"
+        <a href="<?= htmlspecialchars(buildUrl($envKey, $key, '', 0)) ?>" data-api="<?= htmlspecialchars($key) ?>"
            class="<?= $key === $apiKey ? 'active' : '' ?>">
             <?= htmlspecialchars($api['label']) ?>
             <small><?= htmlspecialchars($api['description']) ?></small>
@@ -687,7 +688,7 @@ if ($showPagination) {
     <div class="toolbar">
         <a class="url" href="<?= htmlspecialchars($fullUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($fullUrl) ?></a>
         <div class="toolbar-actions">
-            <form method="get">
+            <form method="get" data-tour="filter">
                 <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
                 <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
                 <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
@@ -774,7 +775,7 @@ if ($showPagination) {
             if ($statusCounts['suspended'] > 0) { $hiddenParts[] = t('status_filter.n_suspended', [$statusCounts['suspended']]); }
             if ($statusCounts['unknown'] > 0)   { $hiddenParts[] = t('status_filter.n_unknown', [$statusCounts['unknown']]); }
         ?>
-            <div class="status-filter" role="group" aria-label="<?= htmlspecialchars(t('status_filter.label')) ?>">
+            <div class="status-filter" data-tour="filter" role="group" aria-label="<?= htmlspecialchars(t('status_filter.label')) ?>">
                 <span class="status-filter-label"><?= htmlspecialchars(t('status_filter.label')) ?></span>
                 <div class="status-seg">
                     <a href="<?= htmlspecialchars($urlAll) ?>" class="<?= $statusFilter === '' ? 'active' : '' ?>"<?= $statusFilter === '' ? ' aria-current="true"' : '' ?>><?= htmlspecialchars(t('status_filter.all')) ?> <small><?= $fetchedCount ?></small></a>
@@ -989,6 +990,7 @@ if ($showPagination) {
 </div>
 
 <?= renderFooter($config) ?>
+<?= renderTourAssets() ?>
 
 <script>
 window.BR_CONFIG = <?= json_encode([
