@@ -10,7 +10,7 @@
  *  - Dialog "View DID log" in der Suche (natives <dialog>, serverseitig gerendert).
  *
  * Konfiguration kommt von index.php:
- *   window.BR_CONFIG = { endpoint: 'base_registry.php', env: 'REF',
+ *   window.BR_CONFIG = { endpoint: 'base_registry.php', env: 'PROD',
  *                        i18n: { loading, unavailable, copied } };
  */
 (function () {

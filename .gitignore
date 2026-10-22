@@ -11,3 +11,7 @@ storage/collect.log
 # (touch storage/.preview). Nicht versionieren, damit PROD nie
 # versehentlich als Preview erscheint.
 storage/.preview
+
+# Lokale, installationsspezifische Konfiguration (z.B. zusätzliche
+# Umgebungen); siehe README "Local configuration".
+storage/config.local.php
