@@ -7,7 +7,7 @@ declare(strict_types=1);
  * oder eine Anreicherung wie _entity_name). Ein alter Cache-Eintrag mit
  * abweichender Version gilt automatisch als veraltet und wird neu geladen —
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
- * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
+ * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS).
  */
 const CACHE_SCHEMA_VERSION = 9;
 

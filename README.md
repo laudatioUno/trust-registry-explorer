@@ -6,7 +6,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Features
 
-- **Multiple environments** — REF, ABN, PROD, INT-ABN, INT-PROD (easy to add more)
+- **Multiple environments** — PROD and INT-PROD out of the box; further environments are added per installation via an untracked local config file (see *Local configuration*)
 - **Six supported APIs** — `ncTLS`, `piTLS`, `vqPS`, `piaTS`, `pvaTS`, `idTS`
 - **JWT decoding** (header + payload, no signature verification) with human-readable timestamps
 - **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one. Multiple terms are combined with AND (`urn:vct:ch.admin.astra.vz.mdl AND did:tdw:…`, the word `AND` is optional); `OR` matches either, `"exact phrase"` searches a phrase and `-term` excludes entries containing it
@@ -113,13 +113,37 @@ Everything that can change — environments, APIs, their columns, and a few glob
 
 ### Adding a new environment
 
+Environments that may be public live in `config.php`:
+
 ```php
 'environments' => [
-    'REF' => ['label' => 'REF', 'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch'],
+    'PROD' => ['label' => 'PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
     // add a new one the same way:
     'NEW-ENV' => ['label' => 'NEW-ENV', 'base_url' => 'https://your-new-host.example.ch'],
 ],
 ```
+
+Environments that must **not** be in the repository (e.g. internal pre-production systems) go into the local config file described next.
+
+### Local configuration (per installation)
+
+One repository can be deployed to several systems that show different environments. Anything installation-specific lives in the optional, untracked file `storage/config.local.php`. It returns an array in the same structure as `config.php`, which is laid over the base config:
+
+```php
+<?php
+return [
+    'environments' => [
+        'MY-ENV' => ['label' => 'MY-ENV', 'base_url' => 'https://trust-reg.example.internal', 'base_registry_url' => 'https://identifier-reg.example.internal'],
+    ],
+    // optional: tab order; the first entry is the default environment
+    'environment_order' => ['MY-ENV', 'PROD', 'INT-PROD'],
+];
+```
+
+- Nested keys such as `environments` or `history` are merged entry by entry; lists and plain values are replaced. Without `environment_order`, added environments appear after the ones from `config.php`.
+- The file is listed in `.gitignore` and is not touched when you pull or deploy new code, so the repository itself knows nothing about the extra environments. `storage/` is protected from web access (see *Protecting `storage/`*); keep it that way for this file, too.
+- A syntax or runtime error in the file does not take the app down: it is logged (`error_log`) and the base config stays active.
+- `collect.php` and the History view use the merged config, so each installation records exactly the environments it shows. History databases are per installation.
 
 ### Adding a new API
 
