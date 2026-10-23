@@ -23,6 +23,32 @@ const PAGINATED_PASSES = [
 ];
 
 /**
+ * Liest einen Request-Parameter (aus $_GET oder $_POST) als String.
+ * PHP liefert für "?x[]=1" ein Array statt eines Strings; ein solcher Wert
+ * wird wie ein fehlender Parameter behandelt (Default), statt eine Warnung
+ * ("Array to string conversion") oder einen TypeError auszulösen.
+ *
+ * @param array<array-key, mixed> $source
+ */
+function requestString(array $source, string $key, string $default = ''): string
+{
+    $value = $source[$key] ?? null;
+    return is_string($value) ? $value : $default;
+}
+
+/**
+ * Wie requestString(), aber als Ganzzahl. Nicht-numerische Strings ergeben
+ * wie bisher beim (int)-Cast 0; Arrays und fehlende Werte den Default.
+ *
+ * @param array<array-key, mixed> $source
+ */
+function requestInt(array $source, string $key, int $default = 0): int
+{
+    $value = $source[$key] ?? null;
+    return is_string($value) ? (int) $value : $default;
+}
+
+/**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
  */
 
@@ -132,6 +158,9 @@ function decodeJwt(string $jwt): array
 function httpGet(string $url): string
 {
     $ch = curl_init($url);
+    if ($ch === false) {
+        throw new RuntimeException(t('error.curl', [0, 'curl_init']));
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 20,
@@ -149,7 +178,7 @@ function httpGet(string $url): string
     if ($httpCode !== 200) {
         throw new RuntimeException(t('error.http_status', [$httpCode, $url]));
     }
-    if ($body === false || trim($body) === '') {
+    if (!is_string($body) || trim($body) === '') {
         throw new RuntimeException(t('error.empty_response'));
     }
     return trim($body);
@@ -191,10 +220,17 @@ function fetchStatusListBytes(string $uri): array
 /**
  * Liest den Statuswert an Position $idx aus den entpackten Statuslisten-
  * Bytes (bitweise, gemäss $bits pro Eintrag). null, wenn $idx ausserhalb
- * der verfügbaren Bytes liegt.
+ * der verfügbaren Bytes liegt, keine Bytes vorliegen oder die Werte aus der
+ * Statusliste ungültig sind: ein negativer Index würde in PHP sonst vom Ende
+ * des Strings lesen (falscher Status), und die Spezifikation erlaubt nur
+ * 1, 2, 4 oder 8 Bit pro Eintrag.
  */
-function extractStatusBit(string $bytes, int $bits, int $idx): ?int
+function extractStatusBit(?string $bytes, ?int $bits, int $idx): ?int
 {
+    if ($bytes === null || $bits === null || $idx < 0 || !in_array($bits, [1, 2, 4, 8], true)) {
+        return null;
+    }
+
     $bitOffset = $idx * $bits;
     $byteIndex = intdiv($bitOffset, 8);
     $bitShift  = $bitOffset % 8;
@@ -353,7 +389,7 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
         foreach ($source['entries'] as $sourceEntry) {
             $sub = $sourceEntry['sub'] ?? null;
             $name = $sourceEntry['entity_name'] ?? null;
-            if ($sub !== null && $name !== null && $name !== '') {
+            if (is_string($sub) && $name !== null && $name !== '') {
                 $nameBySub[$sub] = $name;
             }
         }
@@ -362,7 +398,8 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
     }
 
     foreach ($entries as &$entry) {
-        $entry['_entity_name'] = $nameBySub[$entry[$didField] ?? null] ?? null;
+        $did = $entry[$didField] ?? null;
+        $entry['_entity_name'] = is_string($did) ? ($nameBySub[$did] ?? null) : null;
     }
     unset($entry);
 
@@ -805,7 +842,7 @@ function formatCellValue(mixed $value, string $type): string
         'list'     => is_array($value) ? htmlspecialchars(implode(', ', $value)) : htmlspecialchars((string) $value),
         // Zeigt einen PHP-Bool literal als "true"/"false" (keine Übersetzung, 1:1 wie im JWT).
         'raw_bool' => is_bool($value) ? ($value ? 'true' : 'false') : htmlspecialchars((string) $value),
-        default    => htmlspecialchars(is_scalar($value) ? (string) $value : json_encode($value)),
+        default    => htmlspecialchars(is_scalar($value) ? (string) $value : (string) json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE)),
     };
 }
 
@@ -1554,6 +1591,9 @@ function baseRegistryDidInfo(string $did, string $registryUrl): ?array
 function httpGetStatus(string $url, int $timeout = 10): array
 {
     $ch = curl_init($url);
+    if ($ch === false) {
+        return ['code' => 0, 'body' => '', 'error' => t('error.curl', [0, 'curl_init'])];
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => $timeout,
