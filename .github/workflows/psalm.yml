@@ -1,0 +1,85 @@
+name: Security checks
+
+# Static analysis (SAST) with Psalm plus a check of the dev dependencies for
+# known vulnerabilities. Results appear under Security > Code scanning and as
+# annotations on pull requests. Report-only for now: findings do not fail the
+# run. See README "Security checks".
+on:
+  pull_request:
+    branches: [preview, main]
+  push:
+    branches: [preview, main]
+  schedule:
+    - cron: '23 4 * * 1'   # weekly, picks up new rules and advisories
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  psalm:
+    name: Psalm (types + taint analysis)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to Code scanning
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, mbstring, pdo_sqlite, sqlite3, json
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        # composer.lock (if committed) pins the exact Psalm version
+        run: composer install --prefer-dist --no-progress --no-interaction || composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Psalm (types)
+        continue-on-error: true
+        run: vendor/bin/psalm --no-progress --no-cache --report=psalm.sarif
+
+      - name: Psalm (taint analysis)
+        continue-on-error: true
+        run: vendor/bin/psalm --no-progress --no-cache --taint-analysis --report=psalm-taint.sarif
+
+      - name: Upload types report
+        if: always() && hashFiles('psalm.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: psalm.sarif
+          category: psalm
+
+      - name: Upload taint report
+        if: always() && hashFiles('psalm-taint.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: psalm-taint.sarif
+          category: psalm-taint
+
+  audit:
+    name: Composer audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction || composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Audit
+        # The app has no runtime dependencies; this covers the dev tooling only.
+        run: composer audit
