@@ -7,3 +7,4 @@ composer.json export-ignore
 composer.lock export-ignore
 psalm.xml export-ignore
 psalm-baseline.xml export-ignore
+psalm-bootstrap.php export-ignore

@@ -30,7 +30,7 @@ $config = [
     // und von der GitHub-Action .github/workflows/release.yml gelesen: ändert
     // sich dieser Wert auf main, entsteht automatisch Tag + Release (+ ZIP).
     // Nur im Release-PR anpassen.
-    'version'  => '1.2.1',
+    'version'  => '1.2.2',
     'repo_url' => 'https://github.com/laudatioUno/trust-registry-explorer',
 
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)

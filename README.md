@@ -105,7 +105,7 @@ without it — but to see any data in the History chart:
 - **Psalm** (static analysis, error level 4 in `psalm.xml`; 1 = strictest, 8 = most lenient) in two runs: normal type analysis and `--taint-analysis`, which follows user input (`$_GET`, cookies, …) to dangerous sinks (`echo`, SQL, `curl`, `include`) to find XSS, injection and SSRF. Results are uploaded as SARIF to **Security → Code scanning** and shown on pull requests.
 - **`composer audit`** checks the dev dependencies for known vulnerabilities. The app itself has no runtime dependencies, so this only covers the tooling.
 
-For now the checks are report-only (findings do not fail the run). Run locally: `composer install && vendor/bin/psalm` (add `--taint-analysis` for the taint run). `composer.json`/`psalm.xml` are development tooling only: they are not part of the release ZIP, and nothing is installed on the hosting server.
+`composer.lock` pins the Psalm version; `psalm-baseline.xml` records known, accepted findings (new ones still show up). `psalm-bootstrap.php` only makes `t()`/`currentLang()` from `i18n.php` known to the analysis. For now the checks are report-only (findings do not fail the run). Run locally: `composer install && vendor/bin/psalm` (add `--taint-analysis` for the taint run). `composer.json`, `composer.lock`, `psalm*.xml` and `psalm-bootstrap.php` are development tooling only: they are not part of the release ZIP, and nothing is installed on the hosting server.
 
 ## Versioning & releases
 

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files psalm-version="6.5.0@38fc8444edf0cebc9205296ee6e30e906ade783b">
+  <file src="functions.php">
+    <RedundantCast>
+      <code><![CDATA[(string) $jwt]]></code>
+    </RedundantCast>
+    <RedundantFunctionCall>
+      <code><![CDATA[array_values]]></code>
+    </RedundantFunctionCall>
+  </file>
+  <file src="i18n.php">
+    <RedundantCast>
+      <code><![CDATA[(string) ($_SERVER['HTTP_ACCEPT_LANGUAGE'] ?? '')]]></code>
+    </RedundantCast>
+  </file>
+  <file src="index.php">
+    <RedundantCondition>
+      <code><![CDATA[$apiKey !== null]]></code>
+      <code><![CDATA[$errorMessage === null && $apiKey !== null]]></code>
+    </RedundantCondition>
+  </file>
+</files>
