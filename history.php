@@ -398,7 +398,7 @@ var datasets = chartSeries.map(function (s, i) {
         borderColor: color,
         backgroundColor: color,
         spanGaps: false, // fehlgeschlagene Collector-Läufe zeigen eine Lücke statt eines Sprungs auf 0
-        cubicInterpolationMode: 'monotone', // glättet, ohne unter 0 bzw. über die Messwerte hinauszuschwingen
+        tension: 0, // gerade Strecken von Punkt zu Punkt, keine Glättung
         pointRadius: 2,
         fill: false,
     };
