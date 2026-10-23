@@ -15,3 +15,8 @@ storage/.preview
 # Lokale, installationsspezifische Konfiguration (z.B. zusätzliche
 # Umgebungen); siehe README "Local configuration".
 storage/config.local.php
+
+# Composer (nur Dev-Tooling, siehe README "Security checks")
+/vendor/
+psalm.sarif
+psalm-taint.sarif

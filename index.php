@@ -7,14 +7,25 @@ $config = require __DIR__ . '/config.php';
 
 // ---- Parameter aus der URL lesen ----
 
-$envKey = $_GET['env'] ?? array_key_first($config['environments']);
-if (!isset($config['environments'][$envKey])) {
-    $envKey = array_key_first($config['environments']);
+// env/api werden nicht aus der Eingabe übernommen, sondern per Allowlist aus den
+// Konfigurationsschlüsseln gewählt: so ist der Wert garantiert einer der bekannten
+// Schlüssel (und für die statische Analyse nicht mehr "tainted").
+$requestedEnv = is_string($_GET['env'] ?? null) ? $_GET['env'] : '';
+$requestedApi = is_string($_GET['api'] ?? null) ? $_GET['api'] : '';
+$envKey = array_key_first($config['environments']);
+foreach ($config['environments'] as $knownEnv => $_) {
+    if ((string) $knownEnv === $requestedEnv) {
+        $envKey = (string) $knownEnv;
+        break;
+    }
 }
 
-$apiKey = $_GET['api'] ?? null;
-if ($apiKey !== null && !isset($config['apis'][$apiKey])) {
-    $apiKey = null;
+$apiKey = null;
+foreach ($config['apis'] as $knownApi => $_) {
+    if ((string) $knownApi === $requestedApi) {
+        $apiKey = (string) $knownApi;
+        break;
+    }
 }
 
 $query = trim((string) ($_GET['q'] ?? ''));
