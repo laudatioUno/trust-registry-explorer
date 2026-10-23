@@ -383,15 +383,22 @@ function readChartColors() {
 
 var chartColors = readChartColors();
 
+// Logarithmische Skala: 0 ist dort nicht darstellbar. Damit Tage mit 0 Einträgen
+// trotzdem als Linie ganz unten erscheinen, werden sie auf LOG_ZERO gezeichnet
+// (knapp unter 1); die Achse bekommt dort ein "0", der Tooltip zeigt den echten Wert.
+var isLog = <?= $scale === 'log' ? 'true' : 'false' ?>;
+var LOG_ZERO = 0.5;
+
 var datasets = chartSeries.map(function (s, i) {
     var color = chartColors.palette[i % chartColors.palette.length];
     return {
         label: s.label,
-        data: s.data, // ausgerichtet auf chartLabels, null = Lücke
+        data: isLog ? s.data.map(function (v) { return v === 0 ? LOG_ZERO : v; }) : s.data, // ausgerichtet auf chartLabels, null = Lücke
+        rawData: s.data,
         borderColor: color,
         backgroundColor: color,
         spanGaps: false, // fehlgeschlagene Collector-Läufe zeigen eine Lücke statt eines Sprungs auf 0
-        tension: 0.15,
+        tension: 0, // gerade Strecken von Punkt zu Punkt, keine Glättung
         pointRadius: 2,
         fill: false,
     };
@@ -413,14 +420,44 @@ var historyChart = new Chart(document.getElementById('historyChart'), {
                 type: '<?= $scale === 'log' ? 'logarithmic' : 'linear' ?>',
                 title: { display: true, text: <?= json_encode(t('chart.axis_count'), JSON_THROW_ON_ERROR) ?>, color: chartColors.text },
                 beginAtZero: <?= $scale === 'linear' ? 'true' : 'false' ?>,
-                ticks: { color: chartColors.text },
+                min: isLog ? 0.3 : undefined,
+                ticks: {
+                    color: chartColors.text,
+                    // unterhalb von 1 keine Beschriftung; die 0 zeichnet das Plugin zeroLabel
+                    callback: function (value, index, ticks) {
+                        if (!isLog) return Chart.Ticks.formatters.numeric.call(this, value, index, ticks);
+                        return value < 1 ? '' : String(value);
+                    },
+                },
                 grid: { color: chartColors.grid },
             },
         },
         plugins: {
             legend: { position: 'bottom', labels: { color: chartColors.text } },
+            tooltip: {
+                callbacks: {
+                    label: function (ctx) {
+                        var raw = ctx.dataset.rawData ? ctx.dataset.rawData[ctx.dataIndex] : ctx.parsed.y;
+                        return ctx.dataset.label + ': ' + raw;
+                    },
+                },
+            },
         },
     },
+    plugins: [{
+        id: 'zeroLabel',
+        afterDraw: function (chart) {
+            if (!isLog) return;
+            var y = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
+            ctx.save();
+            ctx.fillStyle = chart.options.scales.y.ticks.color;
+            ctx.font = Chart.helpers.toFont(chart.options.scales.y.ticks.font).string;
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('0', area.left - 8, y.getPixelForValue(LOG_ZERO));
+            ctx.restore();
+        },
+    }],
 });
 
 // Beim Umschalten des Themes (Klick auf den Toggle oder Live-Wechsel der
