@@ -1,9 +1,10 @@
 name: Security checks
 
 # Static analysis (SAST) with Psalm plus a check of the dev dependencies for
-# known vulnerabilities. Results appear under Security > Code scanning and as
-# annotations on pull requests. Report-only for now: findings do not fail the
-# run. See README "Security checks".
+# known vulnerabilities. Errors and taint findings appear under Security >
+# Code scanning and as annotations on pull requests; info-level type notes
+# (code quality, not security) only in the job summary and the artifact.
+# Report-only for now: findings do not fail the run. See README "Security checks".
 on:
   pull_request:
     branches: [preview, main]
@@ -46,6 +47,21 @@ jobs:
         continue-on-error: true
         run: vendor/bin/psalm --no-progress --no-cache --report=psalm.sarif
 
+      - name: Keep only errors for Code scanning
+        # psalm.sarif also contains info-level notes ("Possibly..." type hints
+        # below errorLevel). They are code quality, not security, and would
+        # bury real findings in Security > Code scanning. The full report
+        # stays in the job summary and the artifact.
+        if: always() && hashFiles('psalm.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open('psalm.sarif'))
+          for run in d.get('runs', []):
+              run['results'] = [r for r in run.get('results', []) if r.get('level') != 'note']
+          json.dump(d, open('psalm-errors.sarif', 'w'))
+          PY
+
       - name: Psalm (taint analysis)
         continue-on-error: true
         run: vendor/bin/psalm --no-progress --no-cache --taint-analysis --report=psalm-taint.sarif
@@ -87,10 +103,10 @@ jobs:
           retention-days: 14
 
       - name: Upload types report
-        if: always() && hashFiles('psalm.sarif') != ''
+        if: always() && hashFiles('psalm-errors.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: psalm.sarif
+          sarif_file: psalm-errors.sarif
           category: psalm
 
       - name: Upload taint report

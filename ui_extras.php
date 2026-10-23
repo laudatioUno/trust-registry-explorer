@@ -90,7 +90,7 @@ try {
     uxEnsureSchema($pdo);
 
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    $action = (string) ($method === 'POST' ? ($_POST['a'] ?? '') : ($_GET['a'] ?? 'top'));
+    $action = $method === 'POST' ? requestString($_POST, 'a') : requestString($_GET, 'a', 'top');
 
     if ($method === 'GET' && $action === 'top') {
         uxJson(['ok' => true, 'top' => uxTop($pdo)]);
@@ -103,7 +103,7 @@ try {
     }
 
     if ($method === 'POST' && $action === 'save') {
-        $parts = explode('.', (string) ($_POST['token'] ?? ''));
+        $parts = explode('.', requestString($_POST, 'token'));
         if (count($parts) !== 3) {
             uxJson(['ok' => false, 'error' => 'token'], 400);
         }
@@ -114,9 +114,9 @@ try {
         }
 
         $elapsed = time() - (int) $ts;
-        $moves = (int) ($_POST['moves'] ?? 0);
-        $secs  = (int) ($_POST['secs'] ?? 0);
-        $name  = uxCleanName((string) ($_POST['name'] ?? ''));
+        $moves = requestInt($_POST, 'moves');
+        $secs  = requestInt($_POST, 'secs');
+        $name  = uxCleanName(requestString($_POST, 'name'));
 
         if ($elapsed < UX_MIN_SECONDS || $elapsed > UX_MAX_SECONDS
             || $moves < UX_MIN_MOVES || $moves > UX_MAX_MOVES

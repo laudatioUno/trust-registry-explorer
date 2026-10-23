@@ -10,8 +10,8 @@ $config = require __DIR__ . '/config.php';
 // env/api werden nicht aus der Eingabe übernommen, sondern per Allowlist aus den
 // Konfigurationsschlüsseln gewählt: so ist der Wert garantiert einer der bekannten
 // Schlüssel (und für die statische Analyse nicht mehr "tainted").
-$requestedEnv = is_string($_GET['env'] ?? null) ? $_GET['env'] : '';
-$requestedApi = is_string($_GET['api'] ?? null) ? $_GET['api'] : '';
+$requestedEnv = requestString($_GET, 'env');
+$requestedApi = requestString($_GET, 'api');
 $envKey = array_key_first($config['environments']);
 foreach ($config['environments'] as $knownEnv => $_) {
     if ((string) $knownEnv === $requestedEnv) {
@@ -28,15 +28,15 @@ foreach ($config['apis'] as $knownApi => $_) {
     }
 }
 
-$query = trim((string) ($_GET['q'] ?? ''));
-$page  = max(0, (int) ($_GET['p'] ?? 0));
+$query = trim(requestString($_GET, 'q'));
+$page  = max(0, requestInt($_GET, 'p'));
 $forceRefresh = isset($_GET['refresh']);
 
 // Seitengrösse: wählbar (20/50/100/200), fällt aber bei jeder Navigation, die
 // diesen Wert nicht explizit mitgibt (z.B. Umgebungs-/API-Wechsel), auf den
 // Standardwert aus config.php zurück — kein dauerhaftes Merken gewünscht.
 $pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
-$perPage = (int) ($_GET['per_page'] ?? $config['page_size']);
+$perPage = requestInt($_GET, 'per_page', (int) $config['page_size']);
 if (!in_array($perPage, $pageSizeOptions, true)) {
     $perPage = $config['page_size'];
 }
@@ -44,13 +44,13 @@ if (!in_array($perPage, $pageSizeOptions, true)) {
 // Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
 // beim Umgebungs-/API-Wechsel automatisch weg (nicht in den Default-Params
 // von buildUrl), bleibt aber bei Suche/Pagination/Seitengrösse erhalten.
-$sortKey = $_GET['sort'] ?? null;
+$sortKey = isset($_GET['sort']) && is_string($_GET['sort']) ? $_GET['sort'] : null;
 $sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 
 // ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
 
-$didQuery = trim((string) ($_GET['did'] ?? ''));
-$didEnv   = $_GET['did_env'] ?? $envKey;
+$didQuery = trim(requestString($_GET, 'did'));
+$didEnv   = requestString($_GET, 'did_env', (string) $envKey);
 if (!isset($config['environments'][$didEnv])) {
     $didEnv = $envKey;
 }

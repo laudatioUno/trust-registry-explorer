@@ -31,8 +31,8 @@ function brJson(array $payload, int $code = 200): never
     exit;
 }
 
-$envKey = (string) ($_GET['env'] ?? '');
-$did    = trim((string) ($_GET['did'] ?? ''));
+$envKey = requestString($_GET, 'env');
+$did    = trim(requestString($_GET, 'did'));
 $view   = ($_GET['view'] ?? 'chip') === 'detail' ? 'detail' : 'chip';
 $force  = isset($_GET['refresh']);
 
