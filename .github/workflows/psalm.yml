@@ -50,6 +50,42 @@ jobs:
         continue-on-error: true
         run: vendor/bin/psalm --no-progress --no-cache --taint-analysis --report=psalm-taint.sarif
 
+      - name: Summarize findings
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os, collections
+          for name in ('psalm.sarif', 'psalm-taint.sarif'):
+              if not os.path.exists(name):
+                  print(f"### {name}: not produced\n")
+                  continue
+              runs = json.load(open(name)).get('runs', [])
+              results = [r for run in runs for r in run.get('results', [])]
+              print(f"### {name}: {len(results)} findings\n")
+              by_rule = collections.Counter(r.get('ruleId', '?') for r in results)
+              by_file = collections.Counter(
+                  r['locations'][0]['physicalLocation']['artifactLocation']['uri']
+                  for r in results if r.get('locations'))
+              print("| Rule | Count |\n|---|---|")
+              for k, v in by_rule.most_common(15):
+                  print(f"| {k} | {v} |")
+              print("\n| File | Count |\n|---|---|")
+              for k, v in by_file.most_common(10):
+                  print(f"| {k} | {v} |")
+              print()
+          PY
+
+      - name: Keep reports as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psalm-reports
+          path: |
+            psalm.sarif
+            psalm-taint.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload types report
         if: always() && hashFiles('psalm.sarif') != ''
         uses: github/codeql-action/upload-sarif@v4
