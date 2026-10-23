@@ -10,18 +10,18 @@ $rangeOptions = $config['history']['range_options'] ?? ['7d' => t('range.7d')];
 
 // ---- Parameter aus der URL lesen ----
 
-$rangeKey = $_GET['range'] ?? '7d';
+$rangeKey = requestString($_GET, 'range', '7d');
 if (!isset($rangeOptions[$rangeKey])) {
     $rangeKey = '7d';
 }
 
-$customFrom = trim((string) ($_GET['from'] ?? ''));
-$customTo   = trim((string) ($_GET['to'] ?? ''));
+$customFrom = trim(requestString($_GET, 'from'));
+$customTo   = trim(requestString($_GET, 'to'));
 
 $scale = ($_GET['scale'] ?? 'log') === 'linear' ? 'linear' : 'log';
 
 // series=ENV:API,ENV:API,... — nur bekannte Umgebung/API-Kombinationen übernehmen.
-$seriesParam = $_GET['series'] ?? null;
+$seriesParam = isset($_GET['series']) && is_string($_GET['series']) ? $_GET['series'] : null;
 $selectedSeries = [];
 if ($seriesParam !== null && $seriesParam !== '') {
     foreach (explode(',', $seriesParam) as $pair) {
