@@ -98,6 +98,15 @@ without it — but to see any data in the History chart:
 3. After a couple of nightly runs, open `history.php`, pick a time range and
    the environment/API curves you want to compare.
 
+## Security checks
+
+`.github/workflows/psalm.yml` runs on every pull request against `preview`/`main`, on pushes to those branches, weekly and on demand:
+
+- **Psalm** (static analysis, error level 4 in `psalm.xml`; 1 = strictest, 8 = most lenient) in two runs: normal type analysis and `--taint-analysis`, which follows user input (`$_GET`, cookies, …) to dangerous sinks (`echo`, SQL, `curl`, `include`) to find XSS, injection and SSRF. Results are uploaded as SARIF to **Security → Code scanning** and shown on pull requests.
+- **`composer audit`** checks the dev dependencies for known vulnerabilities. The app itself has no runtime dependencies, so this only covers the tooling.
+
+For now the checks are report-only (findings do not fail the run). Run locally: `composer install && vendor/bin/psalm` (add `--taint-analysis` for the taint run). `composer.json`/`psalm.xml` are development tooling only: they are not part of the release ZIP, and nothing is installed on the hosting server.
+
 ## Versioning & releases
 
 The app follows [Semantic Versioning](https://semver.org/). The current version is `'version'` at the top of `config.php`; it is shown in the footer of both pages (with a link to the matching GitHub release, plus a link to the repository). On a preview instance the footer adds "· preview".
