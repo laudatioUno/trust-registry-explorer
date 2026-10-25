@@ -53,26 +53,35 @@ A lightweight PHP tool for the [swiyu](https://www.eid.admin.ch/) Trust Registry
 ### Running locally without installing PHP
 
 If you don't have PHP on your machine, Docker is enough — the repository is mounted
-live, so edits are picked up on reload and there is nothing to rebuild:
+live, so edits are picked up on reload and there is nothing to rebuild. The
+`Makefile` wraps both ways of starting the app:
 
 ```bash
-docker run -d --rm --name tre-dev \
+make docker   # container on http://localhost:8111 — no local PHP needed
+make dev      # local PHP server on http://localhost:8000
+```
+
+Both run in the foreground; Ctrl-C stops them. Override the ports or the image
+if something clashes: `make docker DOCKER_PORT=9000`, `make dev PORT=9000`,
+`make docker PHP_IMAGE=php:8.4-cli`. `make` on its own lists the targets.
+
+The equivalent command without `make`, if you prefer to see it spelled out:
+
+```bash
+docker run --rm --name tre-dev \
   -v "$PWD":/app -w /app -p 8111:8000 \
   php:8.3-cli php -S 0.0.0.0:8000
 ```
 
-Then open <http://localhost:8111>. Stop it again with `docker rm -f tre-dev`.
-Drop the `-d` to keep it in the foreground and watch the request log instead
-(Ctrl-C stops it). Port `8111` is only a suggestion — change the left half of
-`-p` if it clashes with something.
-
 Two caveats:
 
 - `php:8.3-cli` ships without `pdo_sqlite`, so **`history.php` will error** in this
-  setup; the Explorer itself does not need it. To get History as well, replace
-  `php -S 0.0.0.0:8000` with
-  `sh -c 'docker-php-ext-install pdo_sqlite >/dev/null && php -S 0.0.0.0:8000'`.
-  The extension is compiled at every start, so the port takes ~30 seconds to open.
+  setup; the Explorer and Inspect do not need it. `make docker SQLITE=1` builds
+  the extension at startup to get History as well — note that
+  `docker-php-ext-install pdo_sqlite` alone fails, because the image has no
+  sqlite3 headers (`configure` aborts with `Package 'sqlite3' … not found`), so
+  `libsqlite3-dev` is installed first. All of that happens at every start, so the
+  port takes some 10–60 seconds longer to open (depending on the apt download).
 - The container needs outbound HTTPS to the registry hosts, same as any other
   deployment (see *Requirements*).
 
@@ -251,6 +260,7 @@ Three files, each with a single responsibility:
 | `index.php` | **Landing page** — the Inspect view: environment tabs, one DID field, verdict, cross-API dossier, Base Registry panel. Also routes old bookmarks: list-shaped URLs are redirected to `explorer.php` |
 | `explorer.php` | The Explorer: environment tabs, list selector, toolbar filter, table/card rendering, status filter, sorting, pagination, CSV export |
 | `.github/workflows/release.yml`, `.github/scripts/release_notes.py`, `.gitattributes` | Release automation (tag, GitHub release, ZIP on a version change in `config.php`) and the list of files kept out of the ZIP |
+| `Makefile` | Dev-only convenience: `make dev` (local PHP) and `make docker` (containerised, no local PHP) start the app; not part of a deployment or the release ZIP |
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
 | `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |
