@@ -1,5 +1,6 @@
 /*
- * Umschalter "Aufbereitet | Rohdaten" in den Detailansichten (index.php) und
+ * Umschalter "Aufbereitet | Rohdaten" in den Detailansichten (index.php,
+ * explorer.php) und
  * Kopieren-Knöpfe der Rohdaten-Blöcke. Reine Event-Delegation, keine Konfiguration.
  */
 (function () {

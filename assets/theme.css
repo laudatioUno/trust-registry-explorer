@@ -1,5 +1,5 @@
 /*
- * Gemeinsame Farb-Tokens für Light/Dark Mode — von index.php und history.php
+ * Gemeinsame Farb-Tokens für Light/Dark Mode — von allen drei Seiten
  * per <link> eingebunden. Neue Töne nur HIER anpassen, nicht in den
  * einzelnen Seiten (die referenzieren ausschliesslich var(--token)).
  *

@@ -51,7 +51,7 @@ if ($seriesParam !== null && $seriesParam !== '') {
 
 /**
  * Baut eine URL zu dieser Seite mit den aktuellen Parametern, überschrieben
- * durch $overrides (analog zu buildUrl() in index.php).
+ * durch $overrides (analog zu buildUrl() in explorer.php).
  */
 function buildHistoryUrl(string $rangeKey, string $scale, array $selectedSeries, string $customFrom, string $customTo, array $overrides = []): string
 {
@@ -199,32 +199,7 @@ try {
 </head>
 <body<?= isPreview() ? ' class="is-preview"' : '' ?>>
 
-<div class="page-header">
-    <a class="brand" href="index.php" aria-label="Swiyu Trust Registry Explorer">
-        <svg class="tre-logo" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">
-            <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
-            <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
-            <rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>
-            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
-            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
-        </svg>
-        <h1>Swiyu Trust Registry Explorer</h1>
-        <?= renderPreviewBadge() ?>
-        <?= renderInternalBadge() ?>
-    </a>
-    <div class="top-nav">
-        <a href="index.php">Explorer</a>
-        <a href="history.php" class="active">History</a>
-        <a href="<?= htmlspecialchars($config['docs']['overview_url']) ?>" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>
-        <?= renderInternalToggle() ?>
-        <div class="lang-switch" role="group" aria-label="<?= htmlspecialchars(t('nav.lang_toggle_aria')) ?>">
-            <a href="<?= htmlspecialchars(langSwitchUrl('de')) ?>" class="lang-btn<?= currentLang() === 'de' ? ' active' : '' ?>">DE</a>
-            <a href="<?= htmlspecialchars(langSwitchUrl('en')) ?>" class="lang-btn<?= currentLang() === 'en' ? ' active' : '' ?>">EN</a>
-            <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
-        </div>
-        <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
-    </div>
-</div>
+<?= renderPageHeader('history', $config, $selectedSeries[0]['env'] ?? array_key_first($environments), $selectedSeries[0]['api'] ?? 'idTS') ?>
 
 <form method="get" class="history-controls" id="historyForm">
     <input type="hidden" name="series" id="seriesInput" value="<?= htmlspecialchars(implode(',', array_map(static fn ($s) => $s['env'] . ':' . $s['api'], $selectedSeries))) ?>">

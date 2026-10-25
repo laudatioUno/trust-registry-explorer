@@ -1,6 +1,6 @@
 # Trust Registry Explorer
 
-A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.admin.ch/) Trust Registry APIs across multiple environments — decodes the returned JWTs and displays their contents in readable, searchable tables.
+A lightweight PHP tool for the [swiyu](https://www.eid.admin.ch/) Trust Registry APIs across multiple environments — decodes the returned JWTs and shows them in readable form. Two views: **Inspect** a single DID across all six APIs, or **browse** one list and filter it.
 
 > This project is fully developed and maintained with [Claude](https://claude.com) (Anthropic).
 
@@ -9,12 +9,16 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Multiple environments** — publicly, the app shows the two environments that matter outside the federal administration, under their public names: **Production** and **Sandbox**. `PROD` and `INT-PROD` are internal code names and only appear, together with the internal stages `REF`, `ABN` and `INT-ABN`, once the **Internal** switch in the header is on (see *Public and internal environments*). Easy to add more
 - **Six supported APIs** — `ncTLS`, `piTLS`, `vqPS`, `piaTS`, `pvaTS`, `idTS`
 - **JWT decoding** (header + payload, no signature verification) with human-readable timestamps
-- **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one. Multiple terms are combined with AND (`urn:vct:ch.admin.astra.vz.mdl AND did:tdw:…`, the word `AND` is optional); `OR` matches either, `"exact phrase"` searches a phrase and `-term` excludes entries containing it
+- **Explorer — browse a list and filter it** — pick an environment, pick one of the six lists, then narrow it with the filter in the toolbar. Filtering automatically loads and searches across *all* pages of an API, not just the currently displayed one. Multiple terms are combined with AND (`urn:vct:ch.admin.astra.vz.mdl AND did:tdw:…`, the word `AND` is optional); `OR` matches either, `"exact phrase"` searches a phrase and `-term` excludes entries containing it
 - **Expandable row details** — click any row to see every field present in that entry's JWT; empty fields are explicitly marked as such, missing fields simply don't appear (so you can see at a glance which translations/attributes exist for a given entry)
 - **Raw data view** — every expanded row (and the list panel of `ncTLS`/`piTLS`) has a switch "Parsed | Raw data" (same as for the Base Registry): the raw view shows the JWT header and payload as unmodified, formatted JSON plus the original compact JWT (incl. signature), each with a copy button — e.g. to paste it into a decoder of your choice. Nothing is sent to third parties
-- **Global DID search** — search a single DID across all six APIs at once and see every place it appears, with the entity name (from idTS) shown up front if available
-- **Base Registry integration** — for every idTS entry the DID is looked up in the environment's Base Registry (`<base_registry_url>/api/v1/did/<UUID>/did.jsonl`, UUID = last segment of the DID). The idTS table has a "Base Registry" column showing the number of DID log versions (loaded lazily via AJAX for the visible rows only); the expanded row has a "Base Registry" tab with version history, keys and the raw log. The global DID search shows Trust Registry and Base Registry side by side, with a "View DID log" dialog (parsed / raw). Supports `did:tdw` 0.3 and `did:webvh` 1.0. Signatures / hash chain are *not* verified. DIDs hosted on another registry are shown as "External DID"
-- **Valid-only status filter** — for APIs with a status list per entry (`row_status`: idTS, piaTS, pvaTS) a toggle "All | Valid only" above the table hides everything whose status-list value is not `valid` (revoked, suspended and unknown). Only the status list counts, not the time-based validity. Entries whose status cannot be determined count as not valid, with a warning. The filter is a URL parameter (`&status=valid`) and survives search, sorting, paging and page size
+- **Inspect — everything about one DID** (`index.php`, the landing page) — the main view, and a separate page for a different question. Paste a DID and get a dossier: a verdict line (entity name from idTS, and whether it is registered, registered but revoked/suspended, or not found), a one-line summary (`3 hits in 2 of 6 APIs`), the Base Registry side by side, and the evidence underneath. It accepts DIDs only — a name or keyword is a list question, and the page hands it to the Explorer with one click rather than refusing it. If nothing is found, it offers the obvious next step instead of a dead end: the same lookup in the other environment
+- **The two are linked, not merged** — browsing a list and inspecting one identity are different tasks with different outputs (a sortable, paginated, exportable table vs. a single-subject dossier), so they are separate pages rather than one search box with a mode switch. They share the environment context, and each links into the other: every API with hits in a dossier has an "Open in the list" action, and every table row carrying a DID has "Inspect this DID in full"
+- **One environment for the whole app** — the environment tabs sit above everything and govern Explorer, Inspect and History alike; there is no second environment selector anywhere. Switching environment repeats what you were doing (term, list, filter, sorting all stay) rather than resetting the page, which makes "works in Sandbox, not in Production" a one-click comparison
+- **Nothing is lost when you click** — every link and form in the Explorer carries the full view state, so switching list or sorting no longer silently resets the status filter, page size or filter term. Every view is therefore a complete, shareable URL; the "Copy link" button in the toolbar hands it to you for pasting into a ticket. Old `?did=…&did_env=…` links still work — they redirect to the Inspect page
+- **Visible data age** — the toolbar shows how old the displayed data is (`Updated 2 minutes ago`) next to Refresh, instead of hiding the cache lifetime in a tooltip
+- **Base Registry integration** — for every idTS entry the DID is looked up in the environment's Base Registry (`<base_registry_url>/api/v1/did/<UUID>/did.jsonl`, UUID = last segment of the DID). The idTS table has a "Base Registry" column showing the number of DID log versions (loaded lazily via AJAX for the visible rows only); the expanded row has a "Base Registry" tab with version history, keys and the raw log. The Inspect page shows Trust Registry and Base Registry side by side, with a "View DID log" dialog (parsed / raw). Supports `did:tdw` 0.3 and `did:webvh` 1.0. Signatures / hash chain are *not* verified. DIDs hosted on another registry are shown as "External DID"
+- **Valid-only status filter** — for APIs with a status list per entry (`row_status`: idTS, piaTS, pvaTS) a toggle "All | Valid only" above the table hides everything whose status-list value is not `valid` (revoked, suspended and unknown). Only the status list counts, not the time-based validity. Entries whose status cannot be determined count as not valid, with a warning. The filter is a URL parameter (`&status=valid`) and survives filtering, sorting, paging, page size and environment switches
 - **CSV export** — the "Export CSV" button in the toolbar downloads the table exactly as shown: all pages, with the current search, status filter and sorting applied, same columns as the table, statuses as plain text (no coloured pills). the file name uses the displayed environment name (`trust-registry-Sandbox-ncTLS-….csv`). UTF-8 with BOM and `;` as separator so Excel opens it directly; the lazily loaded "Base Registry" column and the expanded row content are not included. Cell values starting with `=`, `+`, `@` or `-` are prefixed with an apostrophe to prevent formula injection
 - **Responsive UI** — full table on desktop, stacked card view on mobile, same underlying data and markup
 - **Config-driven** — add a new environment or API by editing `config.php`, no other code changes needed
@@ -37,14 +41,46 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Setup
 
-1. Copy `config.php`, `functions.php`, `index.php`, `history.php`, `collect.php`, the `assets/` folder, and the `storage/` folder (with its `.gitkeep` and `.htaccess`) into the same directory on your web server (or run locally, see below).
+1. Copy `config.php`, `functions.php`, `index.php`, `explorer.php`, `history.php`, `collect.php`, the `assets/` folder, and the `storage/` folder (with its `.gitkeep` and `.htaccess`) into the same directory on your web server (or run locally, see below).
 2. Point your web server's document root at that directory, or run it locally for a quick test:
 
    ```bash
    php -S localhost:8000
    ```
 
-3. Open the page in a browser, pick an environment tab, then an API — that's it, no build step or dependencies to install.
+3. Open the page in a browser. You land on **Inspect DID** — paste a DID to see everything the registry knows about it, or follow *Explorer* in the header to browse a list. No build step or dependencies to install.
+
+### Running locally without installing PHP
+
+If you don't have PHP on your machine, Docker is enough — the repository is mounted
+live, so edits are picked up on reload and there is nothing to rebuild:
+
+```bash
+docker run -d --rm --name tre-dev \
+  -v "$PWD":/app -w /app -p 8111:8000 \
+  php:8.3-cli php -S 0.0.0.0:8000
+```
+
+Then open <http://localhost:8111>. Stop it again with `docker rm -f tre-dev`.
+Drop the `-d` to keep it in the foreground and watch the request log instead
+(Ctrl-C stops it). Port `8111` is only a suggestion — change the left half of
+`-p` if it clashes with something.
+
+Two caveats:
+
+- `php:8.3-cli` ships without `pdo_sqlite`, so **`history.php` will error** in this
+  setup; the Explorer itself does not need it. To get History as well, replace
+  `php -S 0.0.0.0:8000` with
+  `sh -c 'docker-php-ext-install pdo_sqlite >/dev/null && php -S 0.0.0.0:8000'`.
+  The extension is compiled at every start, so the port takes ~30 seconds to open.
+- The container needs outbound HTTPS to the registry hosts, same as any other
+  deployment (see *Requirements*).
+
+To syntax-check a file without starting a server:
+
+```bash
+docker run --rm -v "$PWD":/app -w /app php:8.3-cli php -l index.php
+```
 
 ### Protecting `storage/`
 
@@ -108,7 +144,7 @@ Two things to keep in mind:
   series from a copied `?series=…` URL in public mode (turning the switch on brings
   them back).
 
-While the switch is off, a hand-written `?env=REF` (or `?did_env=`, or an AJAX call
+While the switch is off, a hand-written `?env=REF` (or an AJAX call
 to `base_registry.php?env=REF`) falls back to a public environment rather than
 opening an internal one, so the two modes stay consistent.
 
@@ -212,14 +248,16 @@ Three files, each with a single responsibility:
 |---|---|
 | `config.php` | Environments, APIs, paths, column definitions, cache settings, History settings — the only file most extensions require |
 | `functions.php` | JWT decoding, HTTP fetching (incl. following pagination), full-text search, per-entry detail rendering, cross-API DID search, History helpers (counting, SQLite access, time-range resolution) |
-| `index.php` | The UI: environment tabs, API selector, DID search bar, table/card rendering, pagination |
+| `index.php` | **Landing page** — the Inspect view: environment tabs, one DID field, verdict, cross-API dossier, Base Registry panel. Also routes old bookmarks: list-shaped URLs are redirected to `explorer.php` |
+| `explorer.php` | The Explorer: environment tabs, list selector, toolbar filter, table/card rendering, status filter, sorting, pagination, CSV export |
 | `.github/workflows/release.yml`, `.github/scripts/release_notes.py`, `.gitattributes` | Release automation (tag, GitHub release, ZIP on a version change in `config.php`) and the list of files kept out of the ZIP |
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
 | `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |
+| `assets/inspect.css` | Styling for the Inspect view (search card, verdict line, per-API result cards) — separate from `index.php` so it stays out of the Explorer |
 | `assets/base-registry.css`, `assets/base-registry.js` | Styling and front-end logic (lazy chip loading, tabs, DID log dialog) for the Base Registry views |
 | `assets/chart.umd.min.js` | Chart.js, vendored locally so `history.php` has no external CDN dependency |
-| `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by `index.php` and `history.php` — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
+| `assets/theme.css` | Light/dark color tokens (CSS custom properties), shared by all three pages — the only place to adjust a color. Also defines the `.tre-logo`/`.tre-spinner` icon styling and the `.tre-loading-overlay` component |
 | `assets/theme.js` | Dark-mode logic: follows the OS setting by default, the toggle button overrides it and remembers the choice (`localStorage`), fires a `trustexplorer:themechange` event other scripts (the History chart) can react to. Also exposes `TrustExplorer.attachLoadingOverlay()`, which wires the loading spinner to a page's links/forms |
 | `assets/favicon-preview.svg`, `favicon-preview.ico`, `apple-touch-icon-preview.png` | Greyed-out variants of the logo (contrast ≥ 4.5:1 against white and against dark `#202124` tab backgrounds; the SVG switches via `prefers-color-scheme`), used instead of the regular icons while `storage/.preview` exists |
 | `assets/favicon.svg`, `favicon.ico`, `favicon-*.png`, `apple-touch-icon.png` | The logo mark, rendered to the sizes browsers/OSes expect for a tab icon / bookmark / home-screen icon. Regenerate from `assets/favicon.svg` if the mark ever changes |

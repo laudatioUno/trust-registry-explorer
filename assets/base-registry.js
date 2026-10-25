@@ -1,5 +1,5 @@
 /*
- * Base-Registry-Frontend (nur index.php).
+ * Base-Registry-Frontend (explorer.php: Spalte + Detail-Tab; index.php: Dossier).
  *
  *  - Spalte "Base Registry" der idTS-Tabelle: jede Zelle (td.br-cell[data-br-did])
  *    lädt ihren Chip ("1 version", "Not found", ...) per fetch() von
@@ -9,7 +9,7 @@
  *    (lädt Details + Rohlog beim ersten Öffnen nach).
  *  - Dialog "View DID log" in der Suche (natives <dialog>, serverseitig gerendert).
  *
- * Konfiguration kommt von index.php:
+ * Konfiguration kommt von der Seite (window.BR_CONFIG):
  *   window.BR_CONFIG = { endpoint: 'base_registry.php', env: 'REF',
  *                        i18n: { loading, unavailable, copied } };
  */

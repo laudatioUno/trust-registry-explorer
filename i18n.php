@@ -91,7 +91,11 @@ function t(string $key, array $vars = []): string
  */
 function langSwitchUrl(string $lang): string
 {
-    return '?' . http_build_query(array_merge($_GET, ['lang' => $lang]));
+    $params = array_merge($_GET, ['lang' => $lang]);
+    // Einmal-Aktionen nicht mitschleppen: ein Sprachwechsel soll weder einen
+    // zweiten Vollabruf (refresh) noch einen CSV-Download (export) auslösen.
+    unset($params['refresh'], $params['export']);
+    return '?' . http_build_query($params);
 }
 
 // Sprache sofort ermitteln (löst ggf. den Redirect oben aus), damit sie für

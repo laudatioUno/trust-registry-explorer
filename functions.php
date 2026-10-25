@@ -117,16 +117,113 @@ function applyInternalToggle(): void
     unset($params['internal']);
     // Beim Verlassen des internen Modus kann in der URL noch eine interne
     // Umgebung stehen - weglassen, damit die Seite nicht auf einem Tab landet,
-    // den es gerade nicht mehr gibt (index.php/history.php fallen sonst
+    // den es gerade nicht mehr gibt (die Seiten fallen sonst
     // ohnehin auf die erste sichtbare Umgebung zurück).
     if ($requested === '0') {
-        unset($params['env'], $params['did_env'], $params['series']);
+        unset($params['env'], $params['series']);
     }
 
     $query = http_build_query($params);
     $self = $_SERVER['PHP_SELF'] ?? '';
     header('Location: ' . $self . ($query !== '' ? '?' . $query : ''));
     exit;
+}
+
+/**
+ * Alt-Links auf das neue Suchschema umbiegen.
+ *
+ * Auf index.php lagen früher BEIDE Aufgaben: die Tabelle (?env=&api=&q=…) und
+ * die globale DID-Suche (?did=) mit eigener Umgebungswahl (?did_env=). Heute
+ * ist index.php die Inspect-Seite und das Durchblättern der Listen wohnt in
+ * explorer.php. Solche URLs stehen in Bookmarks und in Tickets ("diese DID
+ * fehlt in PROD: <Link>"), deshalb werden sie übersetzt statt ins Leere zu
+ * laufen. Nur auf index.php aufzurufen:
+ *
+ *   ?did=X&did_env=Y   ->  ?env=Y&did=X          (bleibt hier, Inspect)
+ *   ?api=…&q=…&sort=…  ->  explorer.php?…        (war eine Listenfrage)
+ *
+ * Eine DID gewinnt: die alte Seite konnte beides gleichzeitig in der URL
+ * haben, und wer eine DID mitgibt, meinte die Identitätsfrage.
+ *
+ * MUSS vor jeglicher Ausgabe aufgerufen werden (wie applyInternalToggle()).
+ */
+function applyLegacySearchRedirect(): void
+{
+    if (PHP_SAPI === 'cli' || headers_sent()) {
+        return;
+    }
+
+    $did    = $_GET['did'] ?? null;
+    $didEnv = $_GET['did_env'] ?? null;
+    $params = $_GET;
+
+    // Die alte zweite Umgebungswahl ist die Umgebung, in der gesucht wurde.
+    if (is_string($didEnv) && $didEnv !== '') {
+        $params['env'] = $didEnv;
+    }
+    unset($params['did_env']);
+
+    $hasDid = is_string($did) && trim($did) !== '';
+
+    // Parameter, die es nur in der Listenansicht gibt - ihre Anwesenheit
+    // verrät einen alten Explorer-Link.
+    $listOnly = array_intersect_key($params, array_flip(['api', 'q', 'sort', 'dir', 'status', 'per_page', 'p', 'export']));
+
+    if (!$hasDid && $listOnly !== []) {
+        unset($params['did']);
+        header('Location: explorer.php?' . http_build_query($params));
+        exit;
+    }
+
+    if ($hasDid && ($didEnv !== null || $listOnly !== [])) {
+        // DID gewinnt: alles Listenhafte fällt weg, die Seite bleibt diese.
+        $target = array_filter(['env' => $params['env'] ?? null, 'did' => trim((string) $did)]);
+        header('Location: ?' . http_build_query($target));
+        exit;
+    }
+}
+
+/**
+ * Sieht der Suchbegriff nach einer Identität aus - also nach einer DID oder
+ * einer nackten UUID (dem letzten Segment einer did:tdw/did:webvh)?
+ *
+ * Entscheidet AUSSCHLIESSLICH über die Vorauswahl des Suchbereichs: wer eine
+ * DID eingibt, will fast immer wissen "wo überall kommt die vor?", wer ein
+ * Wort eingibt, meint meist die Liste, die gerade offen ist. Die Entscheidung
+ * wird im Ergebniskopf angezeigt und ist dort mit einem Klick umkehrbar -
+ * eine falsche Vermutung kostet also nie mehr als einen Klick.
+ */
+function looksLikeDid(string $term): bool
+{
+    $term = trim($term);
+    if (stripos($term, 'did:') === 0) {
+        return true;
+    }
+    return (bool) preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $term);
+}
+
+/**
+ * "vor 2 Minuten" / "gerade eben" für den Zeitstempel aus dem Session-Cache.
+ *
+ * Die Frische der Daten ist in einem Registry-Explorer eine echte Information
+ * ("ist meine Registrierung schon durch?") und stand bisher nur in einem
+ * title-Tooltip am Refresh-Knopf - also praktisch nirgends.
+ */
+function formatCacheAge(?int $fetchedAt): ?string
+{
+    if ($fetchedAt === null) {
+        return null;
+    }
+    $seconds = max(0, time() - $fetchedAt);
+    if ($seconds < 60) {
+        return t('freshness.just_now');
+    }
+    $minutes = (int) floor($seconds / 60);
+    if ($minutes < 60) {
+        return t($minutes === 1 ? 'freshness.minute' : 'freshness.minutes', [$minutes]);
+    }
+    $hours = (int) floor($minutes / 60);
+    return t($hours === 1 ? 'freshness.hour' : 'freshness.hours', [$hours]);
 }
 
 /**
@@ -174,6 +271,8 @@ function envLabel(array $env): string
 function internalToggleUrl(): string
 {
     $params = array_merge($_GET, ['internal' => internalMode() ? '0' : '1']);
+    // Siehe langSwitchUrl(): Einmal-Aktionen gehören nicht in diese URL.
+    unset($params['refresh'], $params['export']);
     return '?' . http_build_query($params);
 }
 
@@ -219,6 +318,65 @@ function assetUrl(string $path): string
 }
 
 /** Fusszeile mit Version (Link auf das GitHub-Release) und Repository-Link. */
+/**
+ * Der Seitenkopf (Logo, Titel, Badges, Navigation, Sprache, Theme) - identisch
+ * auf allen Seiten, deshalb genau einmal hier statt pro Seite kopiert.
+ *
+ * $active ist die laufende Seite ('explorer' | 'inspect' | 'history') und
+ * bestimmt, welcher Navigationspunkt hervorgehoben wird. $envKey wandert in
+ * die Links der jeweils anderen Seiten, damit die gewählte Umgebung beim
+ * Seitenwechsel erhalten bleibt - sie ist Kontext der ganzen Anwendung, nicht
+ * einer einzelnen Seite. $historyApi ist die API, auf der die History-Seite
+ * starten soll (dort heisst die Auswahl ?series=<env>:<api>).
+ */
+function renderPageHeader(string $active, array $config, string $envKey, string $historyApi = 'idTS'): string
+{
+    $env = rawurlencode($envKey);
+    // Reihenfolge = Gewicht: "eine DID prüfen" ist die Hauptaufgabe und zugleich
+    // die Startseite (index.php), das Durchblättern der Listen kommt danach.
+    $nav = [
+        'inspect'  => ['index.php?env=' . $env, t('nav.inspect')],
+        'explorer' => ['explorer.php?env=' . $env, 'Explorer'],
+        'history'  => ['history.php?series=' . rawurlencode($envKey . ':' . $historyApi), 'History'],
+    ];
+
+    $links = '';
+    foreach ($nav as $key => [$href, $label]) {
+        $links .= '<a href="' . htmlspecialchars($href) . '"'
+            . ($key === $active ? ' class="active"' : '') . '>'
+            . htmlspecialchars($label) . '</a>';
+    }
+
+    $langs = '';
+    foreach (I18N_SUPPORTED as $code) {
+        $langs .= '<a href="' . htmlspecialchars(langSwitchUrl($code)) . '"'
+            . ' class="lang-btn' . (currentLang() === $code ? ' active' : '') . '">'
+            . htmlspecialchars(strtoupper($code)) . '</a>';
+    }
+
+    return '<div class="page-header">'
+        . '<a class="brand" href="index.php" aria-label="Swiyu Trust Registry Explorer">'
+        . '<svg class="tre-logo" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">'
+        . '<rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>'
+        . '<rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>'
+        . '<rect class="tre-bar" x="12" y="66" width="48" height="16" rx="6"></rect>'
+        . '<circle class="tre-seal" cx="76" cy="74" r="20"></circle>'
+        . '<path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>'
+        . '</svg>'
+        . '<h1>Swiyu Trust Registry Explorer</h1>'
+        . renderPreviewBadge()
+        . renderInternalBadge()
+        . '</a>'
+        . '<div class="top-nav">'
+        . $links
+        . '<a href="' . htmlspecialchars($config['docs']['overview_url']) . '" class="docs-link" target="_blank" rel="noopener">📖 Docs</a>'
+        . renderInternalToggle()
+        . '<div class="lang-switch" role="group" aria-label="' . htmlspecialchars(t('nav.lang_toggle_aria')) . '">' . $langs . '</div>'
+        . '<button type="button" class="theme-toggle" id="themeToggle" aria-label="' . htmlspecialchars(t('nav.theme_toggle_aria')) . '">🌙</button>'
+        . '</div>'
+        . "</div>\n";
+}
+
 function renderFooter(array $config): string
 {
     $version = trim((string)($config['version'] ?? ''));
@@ -1132,7 +1290,7 @@ function renderIssuerList(array $issuers): string
 
     // In einen .table-scroll-Wrapper (wie die Haupttabellen) UND bewusst NICHT
     // vom generischen Mobile-"Tabelle wird Kartenliste"-Umbau erfasst (siehe
-    // CSS-Ausnahme für table.issuer-table in index.php) -- eine 4-spaltige
+    // CSS-Ausnahme für table.issuer-table in explorer.php) -- eine 4-spaltige
     // Liste ohne data-label-Attribute würde dort unbeschriftet zerlaufen.
     $html = '<div class="table-scroll"><table class="issuer-table"><thead><tr>'
         . '<th>DID</th><th>Name (from idTS)</th><th>Status</th><th>Validity</th>'
@@ -1540,16 +1698,24 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
 
     if ($forceRefresh || $isStale) {
         $result = fetchAllEntries($envKey, $baseUrl, $apiCfg, $allApis, $ttl);
+        $fetchedAt = time();
         $_SESSION['trust_explorer_cache'][$cacheKey] = [
             'entries'    => $result['entries'],
             'list_meta'  => $result['list_meta'],
             'schema'     => CACHE_SCHEMA_VERSION,
-            'fetched_at' => time(),
+            'fetched_at' => $fetchedAt,
         ];
+        // fetched_at wandert mit nach draussen, damit die Oberfläche das Alter
+        // der Daten anzeigen kann (siehe formatCacheAge()).
+        $result['fetched_at'] = $fetchedAt;
         return $result;
     }
 
-    return ['entries' => $cached['entries'], 'list_meta' => $cached['list_meta'] ?? null];
+    return [
+        'entries'    => $cached['entries'],
+        'list_meta'  => $cached['list_meta'] ?? null,
+        'fetched_at' => $cached['fetched_at'] ?? null,
+    ];
 }
 
 /**

@@ -17,7 +17,7 @@ declare(strict_types=1);
  * Akzeptiert werden nur die im aktuellen Modus sichtbaren Umgebungen - interne
  * Umgebungen also nur mit aktivem "Internal"-Umschalter (Cookie, das der
  * fetch() mitschickt). Damit gilt für diesen Endpoint dieselbe Auswahl wie
- * für die Tabs in index.php.
+ * für die Tabs in explorer.php.
  *
  * i18n.php muss zuerst geladen werden (t(), Sprache aus dem Cookie).
  */

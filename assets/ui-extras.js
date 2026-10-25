@@ -1,6 +1,6 @@
 /*
  * Leerer Tabellenzustand: kleine Extras. Wird nur geladen, wenn die Tabelle leer ist.
- * Konfiguration von index.php: window.UX_CONFIG = { endpoint, i18n: {...} }
+ * Konfiguration von explorer.php: window.UX_CONFIG = { endpoint, i18n: {...} }
  */
 (function () {
     'use strict';

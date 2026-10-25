@@ -1,0 +1,1008 @@
+<?php
+declare(strict_types=1);
+
+require __DIR__ . '/i18n.php';
+require __DIR__ . '/functions.php';
+$config = require __DIR__ . '/config.php';
+
+// Klick auf den "Internal"-Umschalter im Seitenkopf: setzt das Cookie und
+// leitet um - muss vor jeglicher Ausgabe passieren (siehe functions.php).
+applyInternalToggle();
+
+// Im aktuellen Modus wählbare Umgebungen: öffentlich nur PROD/INT-PROD,
+// im internen Modus zusätzlich REF/ABN/INT-ABN. Überall ab hier wird NUR
+// noch diese Liste benutzt, damit eine interne Umgebung auch per manuell
+// gesetztem ?env= nicht an den Tabs vorbei geöffnet werden kann.
+$environments = visibleEnvironments($config);
+
+// ---- Parameter aus der URL lesen ----
+
+$envKey = $_GET['env'] ?? array_key_first($environments);
+if (!isset($environments[$envKey])) {
+    $envKey = array_key_first($environments);
+}
+
+$apiKey = $_GET['api'] ?? null;
+if ($apiKey !== null && !isset($config['apis'][$apiKey])) {
+    $apiKey = null;
+}
+
+$query = trim((string) ($_GET['q'] ?? ''));
+$page  = max(0, (int) ($_GET['p'] ?? 0));
+$forceRefresh = isset($_GET['refresh']);
+
+// Seitengrösse: wählbar (20/50/100/200), fällt aber bei jeder Navigation, die
+// diesen Wert nicht explizit mitgibt (z.B. Umgebungs-/API-Wechsel), auf den
+// Standardwert aus config.php zurück — kein dauerhaftes Merken gewünscht.
+$pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
+$perPage = (int) ($_GET['per_page'] ?? $config['page_size']);
+if (!in_array($perPage, $pageSizeOptions, true)) {
+    $perPage = $config['page_size'];
+}
+
+// Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
+// beim Umgebungs-/API-Wechsel automatisch weg (nicht in den Default-Params
+// von buildUrl), bleibt aber bei Suche/Pagination/Seitengrösse erhalten.
+$sortKey = $_GET['sort'] ?? null;
+$sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+
+/* ------------------------------------------------------------------------
+ * URL-Zustand
+ *
+ * Die ganze Oberfläche ist zustandslos: was die Nutzerin eingestellt hat,
+ * steht in der URL. Früher baute buildUrl() jede interne URL aus vier fest
+ * verdrahteten Parametern (env/api/q/p) - alles andere (Status-Filter,
+ * Sortierung, Seitengrösse, die laufende Suche) fiel bei JEDEM Klick still
+ * heraus. Ein Tab-Wechsel löschte die Trefferliste, ein Suchlauf setzte
+ * nebenbei den Status-Filter zurück.
+ *
+ * Deshalb gibt es jetzt genau einen Satz "mitgeführter" Parameter, aus dem
+ * alle Links und Formulare gebaut werden. Einmalige Aktionen (refresh,
+ * export, internal) stehen bewusst NICHT darin: die dürfen sich nicht in der
+ * URL festsetzen und beim nächsten Klick erneut auslösen.
+ * --------------------------------------------------------------------- */
+
+const CARRIED_PARAMS = ['env', 'api', 'q', 'p', 'per_page', 'sort', 'dir', 'status'];
+
+/**
+ * Setzt (einmal aus dem Controller) bzw. liefert den mitgeführten Zustand.
+ * Gespeichert werden die bereits VALIDIERTEN Werte, nicht $_GET - so kann
+ * ein unsinniger Parameter aus einer manipulierten URL nicht weiterwandern.
+ */
+function viewState(?array $state = null): array
+{
+    static $current = [];
+    if ($state !== null) {
+        // Nur bekannte Parameter, und immer in derselben Reihenfolge: so ist
+        // dieselbe Ansicht immer dieselbe URL (gut zum Teilen und Vergleichen).
+        $current = [];
+        foreach (CARRIED_PARAMS as $key) {
+            $value = $state[$key] ?? null;
+            if ($value !== null && $value !== '') {
+                $current[$key] = $value;
+            }
+        }
+    }
+    return $current;
+}
+
+/**
+ * Baut eine URL zu dieser Seite: aktueller Zustand, überschrieben durch
+ * $overrides. Ein Wert von null in $overrides entfernt den Parameter.
+ */
+function buildUrl(array $overrides = []): string
+{
+    $params = array_filter(array_merge(viewState(), $overrides), static fn ($v) => $v !== null && $v !== '');
+    return '?' . http_build_query($params);
+}
+
+/**
+ * Versteckte Felder, damit ein GET-Formular denselben Zustand mitnimmt wie
+ * ein Link. $except sind die Parameter, die das Formular selbst als sichtbare
+ * Felder enthält (sonst stünden sie doppelt in der URL).
+ */
+function hiddenStateFields(array $except = []): string
+{
+    $html = '';
+    foreach (viewState() as $k => $v) {
+        if (in_array($k, $except, true)) {
+            continue;
+        }
+        $html .= '<input type="hidden" name="' . htmlspecialchars((string) $k) . '"'
+            . ' value="' . htmlspecialchars((string) $v) . '">';
+    }
+    return $html;
+}
+
+/**
+ * Baut den Link für einen klickbaren Spaltenkopf: erstmaliger Klick sortiert
+ * aufsteigend, ein weiterer Klick auf dieselbe Spalte kehrt um (asc↔desc).
+ * Seite zurück auf 0; alles andere bleibt automatisch erhalten.
+ */
+function buildSortUrl(string $colKey, ?string $currentSortKey, string $currentSortDir): string
+{
+    $nextDir = ($currentSortKey === $colKey && $currentSortDir === 'asc') ? 'desc' : 'asc';
+    return buildUrl(['sort' => $colKey, 'dir' => $nextDir, 'p' => null]);
+}
+
+/**
+ * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
+ * (clientseitig aus nbf/exp berechnet) — einheitlich an jeder Stelle
+ * verwendet, an der diese Begriffe auftauchen (Spaltenköpfe + list_meta-Panel),
+ * damit die Formulierung nicht pro API separat gepflegt werden muss.
+ */
+const INFO_TEXTS = [
+    'status'   => 'Status from status list.',
+    'validity' => 'Computed with nbf (not before) and exp (expired) in payload',
+];
+
+/**
+ * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
+ * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
+ * oder 'validity' (siehe INFO_TEXTS).
+ */
+function renderInfoIcon(string $key, bool $mobileOnly = false): string
+{
+    $text = INFO_TEXTS[$key] ?? '';
+    if ($text === '') {
+        return '';
+    }
+    // $mobileOnly: zusätzliches Icon direkt in der Tabellenzelle, nur per CSS
+    // auf Mobile sichtbar (siehe .info-icon-cell) -- auf Mobile wird <thead>
+    // (und damit das Spaltenkopf-Icon) komplett ausgeblendet, ohne dieses
+    // zweite Icon gäbe es dort also gar keine Erklärung mehr.
+    $class = 'info-icon' . ($mobileOnly ? ' info-icon-cell' : '');
+    return '<span class="' . $class . '" tabindex="0" role="button" aria-label="Explanation">?'
+        . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
+        . '</span>';
+}
+
+$errorMessage = null;
+$hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
+$statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
+$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
+$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
+
+// Ab hier stehen alle Parameter validiert fest: Zustand einfrieren, aus dem
+// jeder Link und jedes Formular dieser Seite gebaut wird. Werte, die ohnehin
+// dem Standard entsprechen, bleiben draussen - das hält die URL kurz und
+// teilbar, ohne am Verhalten etwas zu ändern.
+viewState([
+    'env'      => $envKey,
+    'api'      => $apiKey,
+    'q'        => $query,
+    'p'        => $page > 0 ? $page : null,
+    'per_page' => $perPage !== $config['page_size'] ? $perPage : null,
+    'sort'     => $sortKey,
+    'dir'      => $sortKey !== null ? $sortDir : null,
+    'status'   => $statusParam,
+]);
+$entries = [];
+$fetchedCount = 0;
+$listMeta = null;
+$cacheAge = null;           // "vor 2 Minuten" - Alter der angezeigten Daten
+
+if ($apiKey !== null) {
+    $apiCfg = $config['apis'][$apiKey];
+    $baseUrl = $environments[$envKey]['base_url'];
+
+    try {
+        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
+        $entries = $fetched['entries'];
+        $listMeta = $fetched['list_meta'];
+        $fetchedCount = count($entries);
+        $cacheAge = formatCacheAge($fetched['fetched_at'] ?? null);
+
+        // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
+        // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
+        // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
+        if (!empty($apiCfg['row_status'])) {
+            $hasStatusFilter = true;
+            $statusCounts = statusBucketCounts($entries);
+            if ($statusFilter === 'valid') {
+                $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
+            }
+        }
+
+        $entries = filterEntries($entries, $query);
+
+        if ($sortKey !== null) {
+            $sortCol = null;
+            foreach ($apiCfg['columns'] as $c) {
+                if ($c['key'] === $sortKey) {
+                    $sortCol = $c;
+                    break;
+                }
+            }
+            if ($sortCol !== null) {
+                $entries = sortEntries($entries, $sortCol, $sortDir);
+            }
+        }
+    } catch (Throwable $e) {
+        $errorMessage = $e->getMessage();
+    }
+}
+
+// CSV-Export der Tabelle genau so, wie sie angezeigt wird: alle Zeilen, die
+// Suche, Status-Filter und Sortierung durchlaufen haben (nicht nur die aktuelle
+// Seite), mit denselben Spalten wie die Tabelle in Klartext. Die Spalte
+// "Base Registry" (per AJAX nachgeladen) ist bewusst nicht enthalten.
+// Im Dateinamen steht der ANGEZEIGTE Umgebungsname (öffentlich also
+// "Production"/"Sandbox", intern der Codename) - passend zu dem, was beim
+// Export auf dem Bildschirm stand.
+if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
+    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', envLabel($environments[$envKey])), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: no-store');
+
+    $out = fopen('php://output', 'wb');
+    fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
+    $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
+    fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
+    foreach ($entries as $entry) {
+        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
+    }
+    fclose($out);
+    exit;
+}
+
+$pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
+$totalFiltered = count($entries);
+$showPagination = $totalFiltered > $pageSize;
+
+if ($showPagination) {
+    $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
+    $page = min($page, $totalPages - 1);
+    $pageEntries = array_slice($entries, $page * $perPage, $perPage);
+} else {
+    $totalPages = 1;
+    $page = 0;
+    $pageEntries = $entries; // alles auf einer Seite
+}
+
+// $page ist oben evtl. begrenzt worden (z.B. Seite 9 angefragt, nach dem
+// Filtern gibt es nur noch 3): den korrigierten Wert nachziehen, damit Links
+// nicht eine Seite mitschleppen, die es nicht gibt.
+viewState(array_merge(viewState(), ['p' => $page > 0 ? $page : null]));
+
+?>
+<!DOCTYPE html>
+<html lang="<?= htmlspecialchars(currentLang()) ?>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<?= renderHeadMeta() ?>
+<link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('theme.css')) ?>">
+<script src="<?= htmlspecialchars(assetUrl('theme.js')) ?>"></script>
+<link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('base-registry.css')) ?>">
+<style>
+    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); display: flex; flex-direction: column; min-height: calc(100vh - 4em); min-height: calc(100dvh - 4em); }
+    h1 { font-size: 1.3em; margin-bottom: 1em; }
+
+    .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
+    .page-header h1 { margin: 0; }
+    .page-header .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
+    .top-nav { display: flex; gap: 6px; align-items: stretch; }
+    .top-nav a { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 6px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 20px; text-decoration: none; color: var(--text-2); background: var(--surface); box-sizing: border-box; }
+    .top-nav a.active { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
+    .top-nav a.docs-link { color: var(--accent); border-color: var(--accent-soft); }
+    .top-nav a.docs-link:hover { background: var(--accent-soft-2); }
+
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+    .tabs a { padding: 8px 18px; font-size: 14px; text-decoration: none; color: var(--text-2); border-bottom: 3px solid transparent; }
+    .tabs a.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: bold; }
+
+    .toolbar-freshness { font-size: 11px; color: var(--text-3); white-space: nowrap; align-self: center; }
+    .search-clear { font-size: 12px; color: var(--text-3); align-self: center; white-space: nowrap; }
+
+    .api-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .api-chips a { padding: 6px 14px; font-size: 13px; border-radius: 16px; border: 1px solid var(--border); text-decoration: none; color: var(--text-2); background: var(--surface); }
+    .api-chips a.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: bold; }
+    .api-chips small { color: var(--text-3); margin-left: 4px; }
+
+    .status-filter { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--border); background: var(--accent-soft-2); border-radius: 8px; }
+    .status-filter-label { font-size: 12px; font-weight: bold; color: var(--text-2); }
+    .status-seg { display: inline-flex; border: 1px solid var(--accent-fill); border-radius: 20px; overflow: hidden; }
+    .status-seg a { padding: 6px 14px; font-size: 13px; text-decoration: none; color: var(--accent); background: var(--surface); }
+    .status-seg a + a { border-left: 1px solid var(--accent-fill); }
+    .status-seg a.active { background: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
+    .status-seg small { font-size: 11px; opacity: .8; margin-left: 2px; }
+    .status-filter-note { font-size: 12px; color: var(--text-2); }
+    .status-filter-reset { margin-left: auto; font-size: 12px; font-weight: bold; color: var(--accent); text-decoration: none; }
+    .status-filter-reset:hover { text-decoration: underline; }
+    .status-filter-warning { margin: -4px 0 12px; padding: 8px 14px; font-size: 12px; background: var(--warning-bg); color: var(--warning-text); border-radius: 8px; }
+    @media (max-width: 640px) {
+        .status-filter { flex-direction: column; align-items: stretch; }
+        .status-seg { display: flex; }
+        .status-seg a { flex: 1; text-align: center; padding: 12px 8px; }
+        .status-filter-reset { margin-left: 0; }
+    }
+
+    .toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    /* URL bricht auf max. 2 Zeilen um; würde eine 3. Zeile nötig, wird mit "…"
+       abgeschnitten statt weiter umzubrechen oder horizontal zu scrollen. */
+    .toolbar .url {
+        font-family: monospace; font-size: 12px; color: var(--accent); text-decoration: none;
+        word-break: break-all;
+        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+        overflow: hidden; text-overflow: ellipsis;
+        flex: 1 1 260px; min-width: 0;
+    }
+    .toolbar .url:hover { text-decoration: underline; }
+    .toolbar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+    .toolbar form { display: flex; gap: 6px; }
+    .toolbar input[type=text] { padding: 6px 10px; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; min-width: 220px; background: var(--surface); color: var(--text); }
+    .toolbar button { padding: 6px 14px; font-size: 13px; border: 1px solid var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); border-radius: 4px; cursor: pointer; }
+    /* Refresh- und Spec-Button teilen sich dieselbe Basis -> immer exakt gleich gross */
+    .toolbar-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        padding: 6px 14px; font-size: 13px; border-radius: 4px; border: 1px solid var(--accent-fill);
+        text-decoration: none; white-space: nowrap; box-sizing: border-box; line-height: 1.4;
+    }
+    .toolbar-btn.refresh-btn { background: var(--accent-fill); color: var(--on-accent); }
+    .toolbar-btn.refresh-btn:hover { background: var(--accent-fill-hover); }
+    .toolbar-btn.spec-btn { background: var(--surface); color: var(--accent); border-color: var(--accent); }
+    .toolbar-btn.spec-btn:hover { background: var(--accent-soft-2); }
+    /* <button>, nicht <a> -> Browser-Defaults angleichen */
+    .toolbar-btn.copy-link-btn { background: var(--surface); color: var(--accent); border-color: var(--accent);
+                                 font-family: inherit; cursor: pointer; }
+    .toolbar-btn.copy-link-btn:hover { background: var(--accent-soft-2); }
+
+    .table-scroll { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    table { border-collapse: collapse; width: 100%; background: var(--surface); }
+    th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; vertical-align: top; font-size: 0.88em; word-break: break-word; overflow-wrap: break-word; }
+    th { background: var(--table-head); white-space: nowrap; }
+    .sort-link { display: inline-flex; align-items: center; gap: 4px; color: inherit; text-decoration: none; cursor: pointer; }
+    .sort-link:hover { color: var(--accent); }
+    .sort-link .sort-arrow { font-size: 10px; color: var(--text-3); }
+    .sort-link.active { color: var(--accent); }
+    .sort-link.active .sort-arrow { color: var(--accent); }
+    td.cell-did { font-family: monospace; font-size: 11px; word-break: break-all; max-width: 220px; }
+
+    tr.entry-row.expandable { cursor: pointer; }
+    tr.entry-row.expandable:hover { background: var(--accent-soft-2); }
+    tr.entry-row .caret { display: inline-block; width: 14px; color: var(--accent); }
+    tr.detail-row { display: none; background: var(--accent-soft-2); }
+    tr.detail-row.open { display: table-row; }
+    tr.detail-row td { padding: 14px 20px; }
+    .detail-section { margin-bottom: 14px; }
+    .detail-section h4 { margin: 0 0 6px; font-size: 13px; color: var(--accent); }
+    .raw-switch { margin: 0 0 12px; }
+    .raw-view { display: flex; flex-direction: column; gap: 14px; }
+    pre.br-raw.raw-token { white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-all; max-height: 180px; }
+    .list-meta-raw { margin: 12px 0 0; }
+    .list-meta-raw > summary { cursor: pointer; font-size: 13px; font-weight: bold; color: var(--accent); }
+    .list-meta-raw[open] > summary { margin-bottom: 10px; }
+    table.detail-kv { width: 100%; border: none; background: transparent; }
+    table.detail-kv th { background: transparent; border: none; width: 220px; font-weight: normal; color: var(--text-2); font-size: 12px; vertical-align: top; padding: 3px 8px 3px 0; }
+    table.detail-kv td { border: none; padding: 3px 0; font-size: 12px; }
+    .detail-raw { color: var(--text-3); font-size: 11px; }
+    ul.detail-list { margin: 0; padding-left: 0; list-style: none; font-size: 12px; }
+    ul.detail-list li.is-object { margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--border-soft); }
+    ul.detail-list li.is-object:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: none; }
+    ul.detail-list li.is-scalar { position: relative; padding: 2px 0 2px 14px; }
+    ul.detail-list li.is-scalar::before { content: '•'; position: absolute; left: 0; color: var(--text-3); }
+    .detail-empty { color: var(--text-3); }
+    .value-empty { color: var(--warning-text); font-style: italic; }
+
+    .pagination { margin-top: 14px; display: flex; align-items: center; justify-content: space-between; gap: 14px; font-size: 13px; color: var(--text-2); flex-wrap: wrap; }
+    .pagination form { display: flex; align-items: center; gap: 6px; }
+    .pagination select, .pagination input[type=text] { padding: 4px 6px; font-size: 13px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
+    .page-numbers { display: flex; align-items: center; gap: 2px; }
+    .page-numbers a, .page-numbers span.page-num, .page-numbers span.disabled { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; height: 26px; padding: 0 4px; text-decoration: none; color: var(--accent); border-radius: 4px; }
+    .page-numbers a:hover { background: var(--accent-soft-2); }
+    .page-numbers span.current { background: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
+    .page-numbers span.disabled { color: var(--border); }
+    .page-numbers span.ellipsis { color: var(--text-3); padding: 0 2px; }
+
+    .error { background: var(--error-bg); border: 1px solid var(--error-border); color: var(--error-text); padding: 12px; border-radius: 6px; }
+    .meta { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+
+    .list-meta-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
+    .list-meta-panel .hint { font-size: 11px; color: var(--text-3); margin: 0 0 10px; }
+    .list-meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+    .list-meta-tile { background: var(--table-head-2); border-radius: 6px; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
+    .list-meta-tile .lbl { font-size: 11px; color: var(--text-3); }
+    .list-meta-tile .val { font-size: 13px; font-weight: bold; color: var(--text); }
+    .status-badge { display: inline-block; font-size: 12px; font-weight: bold; padding: 2px 10px; border-radius: 10px; white-space: nowrap; }
+    .status-badge.status-valid { background: var(--success-bg); color: var(--success-text); }
+    .status-badge.status-revoked { background: var(--error-bg); color: var(--error-text); }
+    .status-badge.status-suspended { background: var(--warning-bg); color: var(--warning-text); }
+    .status-badge.status-unknown { background: var(--neutral-bg); color: var(--neutral-text); }
+    .list-meta-error { font-size: 11px; color: var(--error-text); margin: 8px 0 0; }
+
+    /* ---- Info-Icon mit Erklärungs-Tooltip (Status/Validity) ---- */
+    .info-icon {
+        position: relative;
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 14px; height: 14px; margin-left: 4px;
+        border-radius: 50%; background: var(--accent-soft); color: var(--accent);
+        font-size: 10px; font-weight: bold; line-height: 1;
+        cursor: help; vertical-align: middle; user-select: none;
+    }
+    .info-icon .info-tooltip {
+        display: none;
+        /* Bewusst UNTERHALB des Icons (nicht oberhalb): Header-Icons stecken in
+           .table-scroll, dessen overflow-x:auto laut CSS-Spec automatisch auch
+           overflow-y auf "auto" setzt -- eine nach oben herausragende Tooltip-
+           Box würde dadurch am oberen Rand des Containers abgeschnitten. */
+        position: absolute; top: 130%; left: 50%; transform: translateX(-50%);
+        width: 220px; max-width: 60vw;
+        background: var(--tooltip-bg); color: var(--tooltip-text); font-size: 11px; font-weight: normal;
+        line-height: 1.4; padding: 8px 10px; border-radius: 6px;
+        text-align: left; white-space: normal; z-index: 30;
+    }
+    .info-icon .info-tooltip::after {
+        content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+        border: 5px solid transparent; border-bottom-color: var(--tooltip-bg);
+    }
+    .info-icon:hover .info-tooltip,
+    .info-icon:focus .info-tooltip,
+    .info-icon.open .info-tooltip { display: block; }
+    th .info-icon { text-transform: none; }
+    .list-meta-tile .lbl .info-icon { margin-left: 5px; }
+    .info-icon-cell { display: none; } /* auf Desktop reicht das Icon im Spaltenkopf; sichtbar gemacht im Mobile-Media-Query unten */
+
+    /* ---- piTLS: "Amount of allowed issuers" (Zahl + aufklappbare Issuer-Liste) ---- */
+    .issuer-count-link { color: var(--accent); font-weight: bold; text-decoration: none; }
+    .issuer-count-link:hover { text-decoration: underline; }
+    .issuer-count-zero { color: var(--text-3); }
+    table.issuer-table { width: 100%; border-collapse: collapse; background: var(--surface); }
+    table.issuer-table th, table.issuer-table td { border: 1px solid var(--border); padding: 7px 10px; font-size: 12px; text-align: left; }
+    table.issuer-table th { background: var(--table-head); white-space: nowrap; }
+    table.issuer-table td.cell-did { font-family: monospace; font-size: 11px; word-break: break-all; max-width: 220px; }
+
+    /* ---- Mobile: Tabelle wird zu einer gestapelten Karten-Liste ---- */
+    @media (max-width: 640px) {
+        body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
+
+        .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
+        .top-nav { justify-content: center; }
+        .top-nav a { flex: 1; text-align: center; }
+
+        .tabs { gap: 4px; }
+        .tabs a { flex: 1; text-align: center; padding: 10px 4px; }
+
+        .api-chips { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 6px; }
+        .api-chips a { flex: 0 0 auto; }
+        .api-chips small { display: none; } /* Beschreibung spart Platz, Kürzel reicht auf Mobile */
+
+        .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+        .toolbar-actions { justify-content: space-between; }
+        .toolbar form { flex: 1; }
+        .toolbar input[type=text] { flex: 1; min-width: 0; }
+
+        table, thead, tbody, tr, th, td { display: block; width: 100%; box-sizing: border-box; }
+        thead { display: none; }
+        table { border: none; background: transparent; }
+        td.cell-did { max-width: none; font-size: 12px; }
+
+        tr.entry-row { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; padding: 6px 10px; }
+        tr.entry-row td { border: none; padding: 5px 0; }
+        tr.entry-row td[data-label]::before {
+            content: attr(data-label);
+            display: block;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.02em;
+            color: var(--text-3);
+            margin-bottom: 1px;
+        }
+
+        tr.detail-row.open { display: block; }
+        tr.detail-row { border: none; margin: -8px 0 8px; }
+        tr.detail-row td { padding: 12px 14px; background: var(--accent-soft-2); border: 1px solid var(--border); border-top: none; border-radius: 0 0 10px 10px; }
+
+        table.detail-kv th { width: 40%; }
+
+        .list-meta-grid { grid-template-columns: repeat(2, 1fr); }
+
+        /* thead (und damit das Spaltenkopf-Info-Icon) ist hier ausgeblendet
+           -- stattdessen das Icon direkt in der Zelle neben dem Badge zeigen. */
+        .info-icon-cell { display: inline-flex; }
+
+        /* Issuer-Liste (piTLS-Detailansicht) bewusst von der generischen
+           "Tabelle wird Kartenliste"-Regel ausnehmen -- sie hat keine
+           data-label-Attribute und würde sonst unbeschriftet zerlaufen.
+           Bleibt stattdessen eine normale (horizontal scrollbare) Tabelle. */
+        table.issuer-table { display: table; width: 100%; }
+        table.issuer-table thead { display: table-header-group; }
+        table.issuer-table tbody { display: table-row-group; }
+        table.issuer-table tr { display: table-row; }
+        table.issuer-table th, table.issuer-table td { display: table-cell; width: auto; }
+        table.issuer-table td.cell-did { max-width: none; }
+
+        .pagination { justify-content: center; }
+        .page-numbers .page-num:not(.current), .page-numbers .ellipsis, .page-numbers .nav-edge { display: none; }
+        .page-numbers { gap: 10px; }
+    }
+</style>
+</head>
+<body<?= isPreview() ? ' class="is-preview"' : '' ?>>
+
+<?= renderPageHeader('explorer', $config, $envKey, $apiKey ?? 'idTS') ?>
+
+<?php /* Die Umgebung steht ganz oben, weil sie alles darunter bestimmt -
+         Suche wie Tabelle. Es gibt sie genau einmal auf der Seite. */ ?>
+<div class="tabs">
+    <?php foreach ($environments as $key => $env): ?>
+        <?php /* Umgebung wechseln heisst: dieselbe Frage nochmal, andere
+                 Umgebung. Begriff, Bereich, Liste, Filter und Sortierung
+                 bleiben deshalb stehen; nur der Seitenindex wird zurück-
+                 gesetzt, weil er auf einen anderen Datenbestand zeigt. */ ?>
+        <a href="<?= htmlspecialchars(buildUrl(['env' => $key, 'p' => null])) ?>"
+           class="<?= $key === $envKey ? 'active' : '' ?>"><?= htmlspecialchars(envLabel($env)) ?></a>
+    <?php endforeach; ?>
+</div>
+
+<?php /* Reihenfolge der Seite: erst wohin (Umgebung), dann was (Liste), dann
+         suchen, dann lesen. Die Liste steht deshalb direkt unter den Umgebungs-
+         Tabs und nicht unter dem Suchfeld: beides ist Navigation ("welcher
+         Datenbestand?") und gehört zusammen, und die Bereichsauswahl der Suche
+         ("Nur idTS") benennt die Liste - sie muss also vorher gewählt sein. */ ?>
+<div class="api-chips">
+    <?php foreach ($config['apis'] as $key => $api): ?>
+        <?php /* Der sprechende Name führt, das Kürzel steht dahinter: sechs
+                 Vierbuchstaben-Akronyme sind auch für Entwicklerinnen keine
+                 Navigation. Liste wechseln behält Begriff und Filter; nur
+                 Seitenindex und Sortierung fallen weg (die Spalte, nach der
+                 sortiert wurde, gibt es in der neuen Liste evtl. gar nicht). */ ?>
+        <a href="<?= htmlspecialchars(buildUrl(['api' => $key, 'p' => null, 'sort' => null, 'dir' => null])) ?>"
+           class="<?= $key === $apiKey ? 'active' : '' ?>">
+            <?= htmlspecialchars($api['description']) ?>
+            <small><?= htmlspecialchars($api['label']) ?></small>
+        </a>
+    <?php endforeach; ?>
+</div>
+
+<?php /* Lade-Overlay liegt IMMER im DOM (auch bevor eine API gewählt ist),
+         sonst findet der erste Klick auf einen API-Chip noch kein Element
+         zum Anzeigen - siehe TrustExplorer.attachLoadingOverlay. Oben an
+         den Ergebnisbereich angepinnt, nicht mittig über der ganzen
+         (u.U. langen) Tabelle. */ ?>
+<div class="tre-loading-host">
+<div class="tre-loading-overlay" id="tableLoadingOverlay">
+    <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
+        <rect class="tre-bar tre-bar-1" x="12" y="14" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-2" x="12" y="40" width="76" height="16" rx="6"></rect>
+        <rect class="tre-bar tre-bar-3" x="12" y="66" width="48" height="16" rx="6"></rect>
+        <g class="tre-seal-group">
+            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
+            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
+        </g>
+    </svg>
+    <span><?= htmlspecialchars(t('common.loading')) ?></span>
+</div>
+
+<?php if ($apiKey === null): ?>
+
+    <p style="color:var(--text-3);"><?= htmlspecialchars(t('explorer.select_prompt')) ?></p>
+
+<?php else: ?>
+
+    <?php
+    $fullUrl      = $environments[$envKey]['base_url'] . $config['apis'][$apiKey]['path'];
+    $cacheMinutes = (int) round($config['cache_ttl'] / 60);
+    $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
+    ?>
+
+    <div class="toolbar">
+        <a class="url" href="<?= htmlspecialchars($fullUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($fullUrl) ?></a>
+        <div class="toolbar-actions">
+            <?php /* Der Filter der Tabelle gehört zur Tabelle und steht deshalb
+                     hier, nicht in einem eigenen Kasten weiter oben. Es gibt auf
+                     dieser Seite nur noch dieses eine Eingabefeld: die Frage
+                     "wo kommt diese DID überall vor?" ist eine andere Aufgabe
+                     ist mit index.php die Startseite. */ ?>
+            <form method="get">
+                <?= hiddenStateFields(['q', 'p']) ?>
+                <input type="text" name="q" title="<?= htmlspecialchars(t('toolbar.search_syntax')) ?>" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
+                <button type="submit"><?= htmlspecialchars(t('toolbar.filter_button')) ?></button>
+                <?php if ($query !== ''): ?>
+                    <a class="search-clear" href="<?= htmlspecialchars(buildUrl(['q' => null, 'p' => null])) ?>"><?= htmlspecialchars(t('search.clear')) ?></a>
+                <?php endif; ?>
+            </form>
+            <?php /* Alter der Daten als sichtbarer Text statt nur als
+                     title-Tooltip: ob der Cache 4 Minuten alt ist, ist in
+                     einem Registry-Explorer eine echte Information. */ ?>
+            <?php if ($cacheAge !== null): ?>
+                <span class="toolbar-freshness"><?= htmlspecialchars(t('freshness.updated', [$cacheAge])) ?></span>
+            <?php endif; ?>
+            <a class="toolbar-btn refresh-btn" title="<?= htmlspecialchars(t('toolbar.refresh_title', [$cacheMinutes])) ?>" href="<?= htmlspecialchars(buildUrl(['refresh' => 1])) ?>"><?= htmlspecialchars(t('toolbar.refresh')) ?></a>
+            <?php /* Jede Ansicht ist eine normale GET-URL - das war schon immer
+                     so, aber bisher ging der Link beim nächsten Klick verloren
+                     und es gab keinen Hinweis darauf. Beides ist jetzt behoben. */ ?>
+            <button type="button" class="toolbar-btn copy-link-btn" data-copy-link><?= htmlspecialchars(t('toolbar.copy_link')) ?></button>
+            <?php if ($errorMessage === null && $apiKey !== null): ?>
+                <a class="toolbar-btn spec-btn" title="<?= htmlspecialchars(t('toolbar.export_csv_title')) ?>" href="<?= htmlspecialchars(buildUrl(['export' => 'csv', 'p' => null])) ?>"><?= htmlspecialchars(t('toolbar.export_csv')) ?></a>
+            <?php endif; ?>
+            <?php if ($specUrl !== null): ?>
+                <a class="toolbar-btn spec-btn" href="<?= htmlspecialchars($specUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($apiKey) ?> API Spec ↗</a>
+            <?php endif; ?>
+        </div>
+    </div>
+
+    <?php if ($listMeta !== null): ?>
+        <div class="list-meta-panel">
+            <p class="hint"><?= htmlspecialchars(t('listmeta.hint')) ?></p>
+            <div class="list-meta-grid">
+                <div class="list-meta-tile">
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_from')) ?></span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['nbf'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_until')) ?></span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['exp'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl"><?= htmlspecialchars(t('listmeta.created_at')) ?></span>
+                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl"><?= htmlspecialchars(t('common.status')) ?> <?= renderInfoIcon('status') ?></span>
+                    <?php
+                        $statusClass = match ($listMeta['status_value']) {
+                            0 => 'status-valid',
+                            1 => 'status-revoked',
+                            2 => 'status-suspended',
+                            default => 'status-unknown',
+                        };
+                    ?>
+                    <span class="val">
+                        <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars($listMeta['status_label']) ?></span>
+                    </span>
+                </div>
+                <div class="list-meta-tile">
+                    <span class="lbl"><?= htmlspecialchars(t('common.validity')) ?> <?= renderInfoIcon('validity') ?></span>
+                    <?php $listMetaValidity = computeValidity($listMeta['nbf'], $listMeta['exp']); ?>
+                    <span class="val">
+                        <span class="status-badge <?= $listMetaValidity['class'] ?>"><?= htmlspecialchars($listMetaValidity['label']) ?></span>
+                    </span>
+                </div>
+            </div>
+            <?php if (!empty($listMeta['jwt'])): ?>
+                <details class="list-meta-raw">
+                    <summary><?= htmlspecialchars(t('detail.view_raw')) ?></summary>
+                    <?= renderRawJwt((string) $listMeta['jwt']) ?>
+                </details>
+            <?php endif; ?>
+            <?php if ($listMeta['status_error'] !== null): ?>
+                <p class="list-meta-error"><?= htmlspecialchars(t('listmeta.status_unavailable', [$listMeta['status_error']])) ?></p>
+            <?php endif; ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($errorMessage !== null): ?>
+
+        <div class="error"><?= htmlspecialchars(t('explorer.fetch_error', [$errorMessage])) ?></div>
+
+    <?php else: ?>
+
+        <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($environments[$envKey]['base_registry_url']); ?>
+        <?php if ($hasStatusFilter && $statusCounts !== null):
+            $urlAll   = buildUrl(['status' => null, 'p' => null]);
+            $urlValid = buildUrl(['status' => 'valid', 'p' => null]);
+            $hiddenTotal = $statusCounts['revoked'] + $statusCounts['suspended'] + $statusCounts['unknown'];
+            $hiddenParts = [];
+            if ($statusCounts['revoked'] > 0)   { $hiddenParts[] = t('status_filter.n_revoked', [$statusCounts['revoked']]); }
+            if ($statusCounts['suspended'] > 0) { $hiddenParts[] = t('status_filter.n_suspended', [$statusCounts['suspended']]); }
+            if ($statusCounts['unknown'] > 0)   { $hiddenParts[] = t('status_filter.n_unknown', [$statusCounts['unknown']]); }
+        ?>
+            <div class="status-filter" role="group" aria-label="<?= htmlspecialchars(t('status_filter.label')) ?>">
+                <span class="status-filter-label"><?= htmlspecialchars(t('status_filter.label')) ?></span>
+                <div class="status-seg">
+                    <a href="<?= htmlspecialchars($urlAll) ?>" class="<?= $statusFilter === '' ? 'active' : '' ?>"<?= $statusFilter === '' ? ' aria-current="true"' : '' ?>><?= htmlspecialchars(t('status_filter.all')) ?> <small><?= $fetchedCount ?></small></a>
+                    <a href="<?= htmlspecialchars($urlValid) ?>" class="<?= $statusFilter === 'valid' ? 'active' : '' ?>"<?= $statusFilter === 'valid' ? ' aria-current="true"' : '' ?>><?= $statusFilter === 'valid' ? '&#10003; ' : '' ?><?= htmlspecialchars(t('status_filter.valid')) ?> <small><?= $statusCounts['valid'] ?></small></a>
+                </div>
+                <?php if ($statusFilter === 'valid'): ?>
+                    <?php if ($hiddenTotal > 0): ?>
+                        <span class="status-filter-note"><?= htmlspecialchars(t('status_filter.hidden', [$hiddenTotal])) ?>: <?= htmlspecialchars(implode(' · ', $hiddenParts)) ?></span>
+                    <?php endif; ?>
+                    <a class="status-filter-reset" href="<?= htmlspecialchars($urlAll) ?>"><?= htmlspecialchars(t('status_filter.reset')) ?> &#10005;</a>
+                <?php endif; ?>
+            </div>
+            <?php if ($statusFilter === 'valid' && $statusCounts['unknown'] > 0): ?>
+                <div class="status-filter-warning"><?= htmlspecialchars(t('status_filter.unknown_warning', [$statusCounts['unknown']])) ?></div>
+            <?php endif; ?>
+        <?php endif; ?>
+
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <?php foreach ($config['apis'][$apiKey]['columns'] as $col): ?>
+                        <?php
+                            $isSorted = $sortKey === $col['key'];
+                            $arrow = $isSorted ? ($sortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#8693;';
+                            $sortUrl = buildSortUrl($col['key'], $sortKey, $sortDir);
+                        ?>
+                        <th>
+                            <a class="sort-link<?= $isSorted ? ' active' : '' ?>" href="<?= htmlspecialchars($sortUrl) ?>">
+                                <?= htmlspecialchars($col['label']) ?>
+                                <span class="sort-arrow"><?= $arrow ?></span>
+                            </a>
+                            <?php if ($col['type'] === 'status_badge'): ?>
+                                <?= renderInfoIcon('status') ?>
+                            <?php elseif ($col['type'] === 'validity_badge'): ?>
+                                <?= renderInfoIcon('validity') ?>
+                            <?php endif; ?>
+                        </th>
+                    <?php endforeach; ?>
+                    <?php if ($hasBaseCol): ?>
+                        <th><?= htmlspecialchars(t('base.title')) ?></th>
+                    <?php endif; ?>
+                </tr>
+            </thead>
+            <tbody>
+                <?php
+                $columnCount = count($config['apis'][$apiKey]['columns']) + ($hasBaseCol ? 1 : 0);
+                $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
+                ?>
+                <?php if (empty($pageEntries)): ?>
+                    <tr><td colspan="<?= $columnCount ?>">
+                        <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('ui-extras.css')) ?>">
+                        <div class="empty-state">
+                            <span class="empty-icon" role="img" aria-label="<?= htmlspecialchars(t('empty.icon_label')) ?>">
+                                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="M30 30l11 11"/><path d="M16 18v2M26 18v2"/><path d="M17 27c2.5-2.5 5.5-2.5 8 0"/></svg>
+                            </span>
+                            <?php if ($statusFilter === 'valid' && $query === ''): ?>
+                                <div class="empty-title"><?= htmlspecialchars(t('status_filter.no_valid')) ?></div>
+                            <?php else: ?>
+                                <div class="empty-title"><?= htmlspecialchars(t('table.no_entries')) ?></div>
+                                <?php if ($query !== ''): ?>
+                                    <div class="empty-hint"><?= htmlspecialchars(t('empty.hint_search')) ?></div>
+                                <?php endif; ?>
+                            <?php endif; ?>
+                            <div class="empty-actions">
+                                <?php if ($query !== ''): ?>
+                                    <a href="<?= htmlspecialchars(buildUrl(['q' => null, 'p' => null])) ?>"><?= htmlspecialchars(t('empty.reset_search')) ?></a>
+                                <?php endif; ?>
+                                <?php if ($statusFilter === 'valid'): ?>
+                                    <a href="<?= htmlspecialchars(buildUrl(['status' => null, 'p' => null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <script>window.UX_CONFIG = <?= json_encode([
+                            'endpoint' => 'ui_extras.php',
+                            'i18n'     => [
+                                'title' => t('ux.title'), 'moves' => t('ux.moves'), 'moves_short' => t('ux.moves_short'),
+                                'close' => t('ux.close'), 'name' => t('ux.name'), 'save' => t('ux.save'), 'again' => t('ux.again'),
+                                'top' => t('ux.top'), 'none' => t('ux.none'), 'won' => t('ux.won'), 'rank' => t('ux.rank'),
+                                'error' => t('ux.error'), 'card' => t('ux.card'),
+                            ],
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
+                        <script src="<?= htmlspecialchars(assetUrl('ui-extras.js')) ?>"></script>
+                    </td></tr>
+                <?php endif; ?>
+                <?php foreach ($pageEntries as $i => $entry): ?>
+                    <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
+                        <?php foreach ($config['apis'][$apiKey]['columns'] as $j => $col): ?>
+                            <td data-label="<?= htmlspecialchars($col['label']) ?>" class="<?= htmlspecialchars($col['class'] ?? '') ?>">
+                                <?php if ($isExpandable && $j === 0): ?>
+                                    <span class="caret">&#9656;</span>
+                                <?php endif; ?>
+                                <?php if ($col['type'] === 'multilang'): ?>
+                                    <?= formatMultilangCell($entry, $col['key']) ?>
+                                <?php elseif ($col['type'] === 'registry_ids'): ?>
+                                    <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
+                                <?php elseif ($col['type'] === 'status_badge'): ?>
+                                    <?= formatStatusBadgeCell($entry) ?> <?= renderInfoIcon('status', true) ?>
+                                <?php elseif ($col['type'] === 'vct_values'): ?>
+                                    <?= formatVctValuesCell($entry) ?>
+                                <?php elseif ($col['type'] === 'can_issue'): ?>
+                                    <?= formatCanIssueCell($entry) ?>
+                                <?php elseif ($col['type'] === 'validity_badge'): ?>
+                                    <?= formatValidityBadgeCell($entry) ?> <?= renderInfoIcon('validity', true) ?>
+                                <?php elseif ($col['type'] === 'issuer_count'): ?>
+                                    <?= formatIssuerCountCell($entry, $envKey, $apiCfg['issuer_count_from'] ?? 'piaTS') ?>
+                                <?php else: ?>
+                                    <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
+                                <?php endif; ?>
+                            </td>
+                        <?php endforeach; ?>
+                        <?php if ($hasBaseCol):
+                            $entryDid = getPath($entry, $apiCfg['base_registry_did_field']);
+                            $entryDid = is_string($entryDid) ? $entryDid : '';
+                        ?>
+                            <td class="br-cell" data-label="<?= htmlspecialchars(t('base.title')) ?>"<?= $entryDid !== '' ? ' data-br-did="' . htmlspecialchars($entryDid) . '"' : '' ?>>
+                                <?php if ($entryDid === ''): ?>-<?php endif; ?>
+                            </td>
+                        <?php endif; ?>
+                    </tr>
+                    <?php if ($isExpandable): ?>
+                        <tr class="detail-row">
+                            <td colspan="<?= $columnCount ?>">
+                                <?php if (!empty($apiCfg['issuer_count_from'])): ?>
+                                    <?= renderIssuerList($entry['_issuers'] ?? []) ?>
+                                <?php elseif ($hasBaseCol && $entryDid !== ''): ?>
+                                    <div class="detail-tabs" role="tablist">
+                                        <button type="button" role="tab" class="active" data-br-tab="statement"><?= htmlspecialchars(t('base.tab.statement')) ?></button>
+                                        <button type="button" role="tab" data-br-tab="base"><?= htmlspecialchars(t('base.title')) ?> <span class="tab-chip" data-br-tab-chip></span></button>
+                                    </div>
+                                    <div class="detail-pane" data-br-pane-name="statement"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></div>
+                                    <div class="detail-pane" data-br-pane-name="base" data-br-did="<?= htmlspecialchars($entryDid) ?>" hidden></div>
+                                <?php else: ?>
+                                    <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?>
+                                <?php endif; ?>
+                                <?php /* Rückweg in die andere Aufgabe: von einer Zeile
+                                         dieser Liste zur vollständigen Prüfung derselben
+                                         Identität über alle APIs hinweg. Nur wo die Zeile
+                                         überhaupt eine DID trägt. */ ?>
+                                <?php if ($hasBaseCol && $entryDid !== ''): ?>
+                                    <div class="br-actions">
+                                        <a class="br-link" href="index.php?<?= htmlspecialchars(http_build_query(['env' => $envKey, 'did' => $entryDid])) ?>"><?= htmlspecialchars(t('explorer.inspect_did')) ?> &rarr;</a>
+                                    </div>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+
+        <div class="pagination">
+            <?php if ($showPagination): ?>
+                <form method="get" class="page-size-form">
+                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
+                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
+                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
+                    <input type="hidden" name="p" value="0">
+                    <label><?= htmlspecialchars(t('pagination.per_page')) ?>
+                        <select name="per_page" onchange="this.form.submit()">
+                            <?php foreach ($pageSizeOptions as $opt): ?>
+                                <option value="<?= $opt ?>" <?= $opt === $perPage ? 'selected' : '' ?>><?= $opt ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </label>
+                </form>
+
+                <div class="page-numbers">
+                    <?php if ($page > 0): ?>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl(['p' => null])) ?>" title="<?= htmlspecialchars(t('pagination.first')) ?>">&laquo;</a>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl(['p' => $page - 1])) ?>" title="<?= htmlspecialchars(t('pagination.prev')) ?>">&lsaquo;</a>
+                    <?php else: ?>
+                        <span class="disabled nav-edge">&laquo;</span>
+                        <span class="disabled nav-step">&lsaquo;</span>
+                    <?php endif; ?>
+
+                    <?php foreach (paginationRange($page + 1, $totalPages) as $item): ?>
+                        <?php if ($item === '…'): ?>
+                            <span class="ellipsis">…</span>
+                        <?php elseif ($item === $page + 1): ?>
+                            <span class="page-num current"><?= $item ?></span>
+                        <?php else: ?>
+                            <a class="page-num" href="<?= htmlspecialchars(buildUrl(['p' => $item - 1])) ?>"><?= $item ?></a>
+                        <?php endif; ?>
+                    <?php endforeach; ?>
+
+                    <?php if ($page + 1 < $totalPages): ?>
+                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl(['p' => $page + 1])) ?>" title="<?= htmlspecialchars(t('pagination.next')) ?>">&rsaquo;</a>
+                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl(['p' => $totalPages - 1])) ?>" title="<?= htmlspecialchars(t('pagination.last')) ?>">&raquo;</a>
+                    <?php else: ?>
+                        <span class="disabled nav-step">&rsaquo;</span>
+                        <span class="disabled nav-edge">&raquo;</span>
+                    <?php endif; ?>
+                </div>
+
+                <form method="get" class="page-jump-form" onsubmit="var i=this.querySelector('input[name=p]'); var v=parseInt(i.value,10); i.value = isNaN(v) ? 0 : Math.max(0, v - 1);">
+                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
+                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
+                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
+                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
+                    <?php if ($perPage !== $config['page_size']): ?><input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>"><?php endif; ?>
+                    <span><?= htmlspecialchars(t('pagination.page')) ?></span>
+                    <input type="text" inputmode="numeric" name="p" value="<?= $page + 1 ?>" style="width:44px; text-align:center;">
+                    <span><?= htmlspecialchars(t('pagination.of')) ?> <?= $totalPages ?></span>
+                </form>
+            <?php endif; ?>
+        </div>
+
+        <p class="meta">
+            <?= htmlspecialchars(t('meta.entries', [$totalFiltered])) ?><?= $query !== '' ? ' ' . htmlspecialchars(t('meta.filtered_from', [$fetchedCount])) : '' ?><?= $statusFilter === 'valid' ? ' ' . htmlspecialchars(t('status_filter.meta', [$fetchedCount])) : '' ?>
+            <?php if ($showPagination): ?>
+                &middot; <?= htmlspecialchars(t('meta.showing', [$page * $perPage + 1, min($totalFiltered, ($page + 1) * $perPage)])) ?>
+            <?php endif; ?>
+        </p>
+
+    <?php endif; ?>
+
+<?php endif; ?>
+</div>
+
+<?= renderFooter($config) ?>
+
+<script>
+window.BR_CONFIG = <?= json_encode([
+    'endpoint' => 'base_registry.php',
+    'env'      => $envKey,
+    'i18n'     => [
+        'loading'     => t('base.status.loading'),
+        'unavailable' => t('base.status.unavailable'),
+        'copied'      => t('base.copied'),
+    ],
+], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+</script>
+<script src="<?= htmlspecialchars(assetUrl('base-registry.js')) ?>"></script>
+<script src="<?= htmlspecialchars(assetUrl('raw-view.js')) ?>"></script>
+<script>
+document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
+    row.addEventListener('click', function () {
+        var detail = row.nextElementSibling;
+        if (!detail || !detail.classList.contains('detail-row')) return;
+        var isOpen = detail.classList.toggle('open');
+        var caret = row.querySelector('.caret');
+        if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
+    });
+});
+
+// Info-Icons (Status/Validity-Erklärung): Klick/Tap toggelt die Tooltip-
+// Sichtbarkeit (nötig für Touch-Geräte ohne Hover), Klick ausserhalb
+// schliesst alle offenen Tooltips wieder.
+document.querySelectorAll('.info-icon').forEach(function (icon) {
+    icon.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var wasOpen = icon.classList.contains('open');
+        document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
+        if (!wasOpen) icon.classList.add('open');
+    });
+});
+document.addEventListener('click', function () {
+    document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
+});
+
+// Lade-Spinner über der Tabelle: bei allem, was einen Seiten-Reload mit neu
+// berechneter Tabelle auslöst (Umgebung/API wechseln, suchen, sortieren,
+// paginieren, Refresh) - spürbar z.B. bei vqPS mit 1500+ Einträgen.
+TrustExplorer.attachLoadingOverlay('tableLoadingOverlay', [
+    '.tabs a',
+    '.api-chips a',
+    '.toolbar-btn.refresh-btn',
+    '.sort-link',
+    '.pagination a',
+    '.page-size-form select',
+    '.page-jump-form',
+    '.toolbar form',
+]);
+
+// "Link kopieren": jede Ansicht ist eine vollständige GET-URL - teilbar in
+// einem Ticket oder Chat. Fällt ohne Clipboard-API (reiner http-Kontext,
+// älterer Browser) auf execCommand zurück; bewusst KEIN prompt(), ein
+// modaler Dialog wäre hier die schlechtere Rückfallebene.
+document.querySelectorAll('[data-copy-link]').forEach(function (btn) {
+    var label = btn.textContent;
+    var flash = function (text) {
+        btn.textContent = text;
+        setTimeout(function () { btn.textContent = label; }, 1500);
+    };
+    var fallback = function () {
+        var ta = document.createElement('textarea');
+        ta.value = window.location.href;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(ta);
+        return ok;
+    };
+    btn.addEventListener('click', function () {
+        var done = <?= json_encode(t('toolbar.copy_link_done')) ?>;
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(window.location.href).then(
+                function () { flash(done); },
+                function () { if (fallback()) { flash(done); } }
+            );
+        } else if (fallback()) {
+            flash(done);
+        }
+    });
+});
+</script>
+
+</body>
+</html>

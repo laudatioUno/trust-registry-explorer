@@ -1,5 +1,5 @@
 /*
- * Dark-Mode-Logik, gemeinsam genutzt von index.php und history.php.
+ * Dark-Mode-Logik, gemeinsam genutzt von index.php, explorer.php und history.php.
  * Wird synchron im <head> eingebunden (vor dem ersten Rendering der Seite),
  * damit ein gespeicherter Theme-Wunsch sofort greift und es nicht kurz
  * im "falschen" Theme aufblitzt.

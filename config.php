@@ -20,7 +20,7 @@
  * (z.B. "Status", "DID", API-Beschreibungen), stehen hier direkt als Literal
  * — identisch in beiden Sprachen, kein Übersetzungs-Key nötig. Nur die
  * tatsächlich deutschen Originaltexte laufen über t() (siehe lang.php).
- * Setzt voraus, dass i18n.php VOR dieser Datei geladen wurde (index.php/
+ * Setzt voraus, dass i18n.php VOR dieser Datei geladen wurde (index.php/explorer.php/
  * history.php tun das bereits als allerersten Require).
  */
 
@@ -153,7 +153,7 @@ return [
             'description'       => 'Verification Query Public Statement',
             'path'              => '/api/v2/verification-query-public-statement',
             'mode'              => 'paginated_jwt',
-            // Zeilen sind aufklappbar (siehe index.php) und zeigen dann alle JWT-Felder.
+            // Zeilen sind aufklappbar (siehe explorer.php) und zeigen dann alle JWT-Felder.
             'expandable'        => true,
             // Der JWT-Header ist bei jedem Eintrag identisch (derselbe Issuer-Key) —
             // bietet keinen Mehrwert pro Zeile, daher in der Detailansicht ausgeblendet.
@@ -224,6 +224,18 @@ return [
     // Wie lange der Session-Cache pro Umgebung+API gültig ist, bevor
     // ohne expliziten "Refresh"-Klick automatisch neu geladen wird (Sekunden)
     'cache_ttl' => 300,
+
+    // Wie viele Treffer die APIs-weite Suche PRO API ausgeschrieben zeigt.
+    // Die Trefferzahl im Badge ist davon unberührt - gedeckelt wird nur, wie
+    // viele Einträge vollständig gerendert werden.
+    //
+    // Hintergrund: die Suche über alle APIs beantwortet die Frage "wo kommt
+    // das vor?". Bei einer DID sind das eine Handvoll Treffer, bei einem
+    // Allerweltsbegriff ("swiyu") können es mehrere hundert sein - alle
+    // ausgeschrieben ergäbe das eine Seite von zweistelliger Megabyte-Grösse.
+    // Darüber hinaus führt "In der Tabelle zeigen" in die paginierte Liste,
+    // die für grosse Mengen das richtige Werkzeug ist.
+    'search_max_detail_hits' => 5,
 
     // Dokumentations-Links: generischer Overview-Link (im Seitenkopf, API-
     // unabhängig) sowie pro API ein 'doc_url' (siehe oben bei den APIs),

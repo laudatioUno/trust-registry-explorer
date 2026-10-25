@@ -1,0 +1,57 @@
+/* ------------------------------------------------------------------------
+ * Inspect-Ansicht (inspect.php): eine DID, ein Dossier.
+ *
+ * Diese Regeln lagen früher im inline-<style> des Explorers, als die DID-Suche
+ * noch Teil davon war. Seit beide Aufgaben getrennte Seiten sind, gehören sie
+ * hierher - explorer.php braucht sie nicht mehr.
+ *
+ * Ergänzt theme.css (Farbtokens) und base-registry.css (.br-* Panels).
+ * ---------------------------------------------------------------------- */
+
+.did-search { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 20px; }
+.did-search form { display: flex; gap: 8px; }
+.did-search input[type=text] { flex: 1; padding: 7px 10px; font-size: 12px; font-family: monospace; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); }
+.did-search form button { padding: 7px 16px; font-size: 13px; border: 1px solid var(--accent-fill); background: var(--accent-fill); color: var(--on-accent); border-radius: 4px; cursor: pointer; }
+.did-search .hint { font-size: 11px; color: var(--text-3); margin: 6px 0 0; }
+/* Ohne Ergebnis bleibt der Kasten flach: die leere Seite soll nicht so
+   aussehen, als fehle etwas. */
+.did-search.is-idle { padding: 10px 16px; margin-bottom: 14px; }
+.search-form { flex-wrap: wrap; align-items: center; }
+.search-clear { font-size: 12px; color: var(--text-3); align-self: center; white-space: nowrap; }
+/* Ergebniskopf: sagt, was gesucht wurde, und bietet die andere Lesart an. */
+.search-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+                  gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.search-summary-text { margin: 0; font-size: 13px; color: var(--text-2); }
+.search-summary a { font-size: 12px; white-space: nowrap; }
+.search-elsewhere { margin: 8px 0 0; font-size: 13px; color: var(--text-2); display: flex;
+                    flex-wrap: wrap; gap: 10px; align-items: baseline; }
+/* Verdikt: zuerst die Antwort, dann die Belege. */
+.search-verdict { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+                  margin-top: 12px; padding: 10px 14px; border-radius: 8px;
+                  border-left: 4px solid var(--border); background: var(--accent-soft-2); }
+.search-verdict .verdict-name { font-size: 15px; font-weight: bold; }
+.search-verdict .verdict-text { font-size: 13px; color: var(--text-2); }
+.search-verdict .verdict-env { margin-left: auto; font-size: 11px; color: var(--text-3);
+                               text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+.search-verdict.verdict-ok   { border-left-color: var(--ok-text, var(--accent)); }
+.search-verdict.verdict-bad  { border-left-color: var(--error-text); }
+.search-verdict.verdict-warn { border-left-color: var(--accent-2); }
+.search-verdict.verdict-none { border-left-color: var(--border); background: transparent; }
+.more-hits { margin: 10px 0 0; font-size: 12px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 8px; }
+
+.did-entity { display: flex; align-items: center; gap: 10px; background: var(--accent-soft); border-radius: 6px; padding: 8px 12px; margin-top: 12px; }
+.did-entity .lbl { font-size: 11px; color: var(--text-3); }
+.did-entity .val { font-size: 14px; font-weight: bold; color: var(--accent); }
+
+.did-results { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; }
+.did-card { background: var(--accent-soft-2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; }
+.did-card.no-hit { opacity: 0.55; border-color: var(--border); background: transparent; }
+.did-card-head { display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+.did-card-head .name { font-weight: bold; font-size: 14px; }
+.did-card-head .name small { font-weight: normal; color: var(--text-3); font-size: 12px; margin-left: 6px; }
+.did-badge { background: var(--accent-soft); color: var(--accent); font-size: 12px; padding: 2px 10px; border-radius: 10px; }
+.did-card-body { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.did-card-body.open { display: block; }
+.did-hit-label { font-size: 11px; color: var(--text-3); margin: 10px 0 4px; text-transform: uppercase; }
+.did-hit-label:first-child { margin-top: 0; }
+.did-error { color: var(--error-text); font-size: 12px; }
