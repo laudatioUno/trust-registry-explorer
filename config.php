@@ -36,12 +36,17 @@ $config = [
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
     // base_registry_url: Base Registry derselben Umgebung (did.jsonl pro DID,
     //                    siehe 'base_registry' unten)
+    // 'label' ist der angezeigte Name: "Production" und "Sandbox" (so heissen die
+    // beiden Umgebungen auch in der swiyu-Dokumentation). Die Array-Schlüssel
+    // PROD und INT-PROD sind die internen Codenamen und bleiben unverändert,
+    // damit bestehende URLs (?env=PROD), die gesammelte History und die
+    // lokale Konfiguration weiter funktionieren.
     // Hier stehen nur die öffentlichen Umgebungen. Weitere (z.B. interne
     // Vorsysteme) gehören NICHT ins Repository, sondern pro Installation in
     // storage/config.local.php (siehe Ende dieser Datei und README).
     'environments' => [
-        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
-        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
+        'PROD'     => ['label' => 'Production', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
+        'INT-PROD' => ['label' => 'Sandbox',    'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
     ],
 
     // Base Registry: pro DID wird das did.jsonl (did:tdw 0.3 und did:webvh 1.0)
