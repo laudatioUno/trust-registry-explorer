@@ -6,7 +6,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Features
 
-- **Multiple environments** — PROD and INT-PROD out of the box; further environments are added per installation via an untracked local config file (see *Local configuration*)
+- **Multiple environments** — Production and Sandbox out of the box (array keys `PROD` / `INT-PROD`, which stay in URLs and the History database); further environments are added per installation via an untracked local config file (see *Local configuration*)
 - **Six supported APIs** — `ncTLS`, `piTLS`, `vqPS`, `piaTS`, `pvaTS`, `idTS`
 - **JWT decoding** (header + payload, no signature verification) with human-readable timestamps
 - **Pagination and full-text search** — search automatically loads and searches across *all* pages of an API, not just the currently displayed one. Multiple terms are combined with AND (`urn:vct:ch.admin.astra.vz.mdl AND did:tdw:…`, the word `AND` is optional); `OR` matches either, `"exact phrase"` searches a phrase and `-term` excludes entries containing it
