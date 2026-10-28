@@ -27,7 +27,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 
 ## Screenshot
 
-![Alternativtext](screenshot-home.png)
+![Trust Registry Explorer: environment tabs (Production, Sandbox), API selector and the idTS table](screenshot-home.png)
 
 ## Requirements
 
