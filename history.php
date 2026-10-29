@@ -10,18 +10,18 @@ $rangeOptions = $config['history']['range_options'] ?? ['7d' => t('range.7d')];
 
 // ---- Parameter aus der URL lesen ----
 
-$rangeKey = $_GET['range'] ?? '7d';
+$rangeKey = requestString($_GET, 'range', '7d');
 if (!isset($rangeOptions[$rangeKey])) {
     $rangeKey = '7d';
 }
 
-$customFrom = trim((string) ($_GET['from'] ?? ''));
-$customTo   = trim((string) ($_GET['to'] ?? ''));
+$customFrom = trim(requestString($_GET, 'from'));
+$customTo   = trim(requestString($_GET, 'to'));
 
 $scale = ($_GET['scale'] ?? 'log') === 'linear' ? 'linear' : 'log';
 
 // series=ENV:API,ENV:API,... — nur bekannte Umgebung/API-Kombinationen übernehmen.
-$seriesParam = $_GET['series'] ?? null;
+$seriesParam = isset($_GET['series']) && is_string($_GET['series']) ? $_GET['series'] : null;
 $selectedSeries = [];
 if ($seriesParam !== null && $seriesParam !== '') {
     foreach (explode(',', $seriesParam) as $pair) {
@@ -137,20 +137,17 @@ try {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Swiyu Trust Registry Explorer – History</title>
-<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="alternate icon" href="assets/favicon.ico">
-<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
-<link rel="stylesheet" href="assets/theme.css">
-<script src="assets/theme.js"></script>
-<script src="assets/chart.umd.min.js"></script>
+<?= renderHeadMeta(' – History') ?>
+<link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('theme.css')) ?>">
+<script src="<?= htmlspecialchars(assetUrl('theme.js')) ?>"></script>
+<script src="<?= htmlspecialchars(assetUrl('chart.umd.min.js')) ?>"></script>
 <style>
-    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); }
+    body { font-family: Arial, sans-serif; margin: 2em; color: var(--text); background: var(--bg); display: flex; flex-direction: column; min-height: calc(100vh - 4em); min-height: calc(100dvh - 4em); }
     h1 { font-size: 1.3em; margin-bottom: 1em; }
 
     .page-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 1em; flex-wrap: wrap; }
     .page-header h1 { margin: 0; }
-    .page-header .brand { display: flex; align-items: center; gap: 10px; }
+    .page-header .brand { display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; }
     .top-nav { display: flex; gap: 6px; align-items: stretch; }
     .top-nav a { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: 6px 16px; font-size: 13px; border: 1px solid var(--border); border-radius: 20px; text-decoration: none; color: var(--text-2); background: var(--surface); box-sizing: border-box; }
     .top-nav a.active { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); font-weight: bold; }
@@ -182,19 +179,19 @@ try {
     .series-error-note { font-size: 11px; color: var(--warning-text); margin-top: 6px; }
 
     @media (max-width: 640px) {
-        body { margin: 0.75em; }
+        body { margin: 0.75em; min-height: calc(100vh - 1.5em); min-height: calc(100dvh - 1.5em); }
         .page-header { flex-direction: column; align-items: stretch; gap: 8px; }
-        .top-nav { justify-content: center; }
+        .top-nav { justify-content: center; flex-wrap: wrap; }
         .top-nav a { flex: 1; text-align: center; }
         .history-toolbar { flex-direction: column; align-items: stretch; }
         .apply-btn { margin-left: 0; }
     }
 </style>
 </head>
-<body>
+<body<?= isPreview() ? ' class="is-preview"' : '' ?>>
 
 <div class="page-header">
-    <div class="brand">
+    <a class="brand" href="index.php" aria-label="Swiyu Trust Registry Explorer">
         <svg class="tre-logo" width="28" height="28" viewBox="0 0 100 100" aria-hidden="true">
             <rect class="tre-bar" x="12" y="14" width="76" height="16" rx="6"></rect>
             <rect class="tre-bar" x="12" y="40" width="76" height="16" rx="6"></rect>
@@ -203,7 +200,8 @@ try {
             <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
         <h1>Swiyu Trust Registry Explorer</h1>
-    </div>
+        <?= renderPreviewBadge() ?>
+    </a>
     <div class="top-nav">
         <a href="index.php">Explorer</a>
         <a href="history.php" class="active">History</a>
@@ -214,6 +212,7 @@ try {
             <a href="<?= htmlspecialchars(langSwitchUrl('fr')) ?>" class="lang-btn<?= currentLang() === 'fr' ? ' active' : '' ?>">FR</a>
         </div>
         <button type="button" class="theme-toggle" id="themeToggle" aria-label="<?= htmlspecialchars(t('nav.theme_toggle_aria')) ?>">🌙</button>
+        <?= renderTourHelpButton() ?>
     </div>
 </div>
 
@@ -332,6 +331,8 @@ try {
 <?php endif; ?>
 </div>
 
+<?= renderFooter($config) ?>
+
 <script>
 var form = document.getElementById('historyForm');
 var seriesInput = document.getElementById('seriesInput');
@@ -382,15 +383,22 @@ function readChartColors() {
 
 var chartColors = readChartColors();
 
+// Logarithmische Skala: 0 ist dort nicht darstellbar. Damit Tage mit 0 Einträgen
+// trotzdem als Linie ganz unten erscheinen, werden sie auf LOG_ZERO gezeichnet
+// (knapp unter 1); die Achse bekommt dort ein "0", der Tooltip zeigt den echten Wert.
+var isLog = <?= $scale === 'log' ? 'true' : 'false' ?>;
+var LOG_ZERO = 0.5;
+
 var datasets = chartSeries.map(function (s, i) {
     var color = chartColors.palette[i % chartColors.palette.length];
     return {
         label: s.label,
-        data: s.data, // ausgerichtet auf chartLabels, null = Lücke
+        data: isLog ? s.data.map(function (v) { return v === 0 ? LOG_ZERO : v; }) : s.data, // ausgerichtet auf chartLabels, null = Lücke
+        rawData: s.data,
         borderColor: color,
         backgroundColor: color,
         spanGaps: false, // fehlgeschlagene Collector-Läufe zeigen eine Lücke statt eines Sprungs auf 0
-        tension: 0.15,
+        tension: 0, // gerade Strecken von Punkt zu Punkt, keine Glättung
         pointRadius: 2,
         fill: false,
     };
@@ -412,14 +420,44 @@ var historyChart = new Chart(document.getElementById('historyChart'), {
                 type: '<?= $scale === 'log' ? 'logarithmic' : 'linear' ?>',
                 title: { display: true, text: <?= json_encode(t('chart.axis_count'), JSON_THROW_ON_ERROR) ?>, color: chartColors.text },
                 beginAtZero: <?= $scale === 'linear' ? 'true' : 'false' ?>,
-                ticks: { color: chartColors.text },
+                min: isLog ? 0.3 : undefined,
+                ticks: {
+                    color: chartColors.text,
+                    // unterhalb von 1 keine Beschriftung; die 0 zeichnet das Plugin zeroLabel
+                    callback: function (value, index, ticks) {
+                        if (!isLog) return Chart.Ticks.formatters.numeric.call(this, value, index, ticks);
+                        return value < 1 ? '' : String(value);
+                    },
+                },
                 grid: { color: chartColors.grid },
             },
         },
         plugins: {
             legend: { position: 'bottom', labels: { color: chartColors.text } },
+            tooltip: {
+                callbacks: {
+                    label: function (ctx) {
+                        var raw = ctx.dataset.rawData ? ctx.dataset.rawData[ctx.dataIndex] : ctx.parsed.y;
+                        return ctx.dataset.label + ': ' + raw;
+                    },
+                },
+            },
         },
     },
+    plugins: [{
+        id: 'zeroLabel',
+        afterDraw: function (chart) {
+            if (!isLog) return;
+            var y = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
+            ctx.save();
+            ctx.fillStyle = chart.options.scales.y.ticks.color;
+            ctx.font = Chart.helpers.toFont(chart.options.scales.y.ticks.font).string;
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('0', area.left - 8, y.getPixelForValue(LOG_ZERO));
+            ctx.restore();
+        },
+    }],
 });
 
 // Beim Umschalten des Themes (Klick auf den Toggle oder Live-Wechsel der

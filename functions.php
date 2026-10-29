@@ -7,13 +7,128 @@ declare(strict_types=1);
  * oder eine Anreicherung wie _entity_name). Ein alter Cache-Eintrag mit
  * abweichender Version gilt automatisch als veraltet und wird neu geladen —
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
- * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS/REF).
+ * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS).
  */
-const CACHE_SCHEMA_VERSION = 7;
+const CACHE_SCHEMA_VERSION = 10;
+
+// Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
+// iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
+// ist (ein eindeutiges Sortierfeld gibt es nicht; erlaubt sind nur typ, alg,
+// kid, profile_version, iat, exp, nbf). Deshalb wird in mehreren Durchläufen
+// mit wechselnder Seitengrösse (Maximum der Registry: 50) und wechselnder
+// Sortierrichtung geladen und vereinigt — die Gleichstände fallen jedes Mal
+// anders, so dass nach 2–3 Durchläufen alles da ist.
+const PAGINATED_PASSES = [
+    [50, 'asc'], [47, 'desc'], [43, 'asc'], [41, 'desc'], [37, 'asc'], [31, 'desc'],
+];
+
+/**
+ * Liest einen Request-Parameter (aus $_GET oder $_POST) als String.
+ * PHP liefert für "?x[]=1" ein Array statt eines Strings; ein solcher Wert
+ * wird wie ein fehlender Parameter behandelt (Default), statt eine Warnung
+ * ("Array to string conversion") oder einen TypeError auszulösen.
+ *
+ * @param array<array-key, mixed> $source
+ */
+function requestString(array $source, string $key, string $default = ''): string
+{
+    $value = $source[$key] ?? null;
+    return is_string($value) ? $value : $default;
+}
+
+/**
+ * Wie requestString(), aber als Ganzzahl. Nicht-numerische Strings ergeben
+ * wie bisher beim (int)-Cast 0; Arrays und fehlende Werte den Default.
+ *
+ * @param array<array-key, mixed> $source
+ */
+function requestInt(array $source, string $key, int $default = 0): int
+{
+    $value = $source[$key] ?? null;
+    return is_string($value) ? (int) $value : $default;
+}
 
 /**
  * Base64URL-Dekodierung (JWT-Standard) mit Padding-Korrektur.
  */
+
+/**
+ * Preview-Erkennung: Die Instanz gilt als Preview, wenn die Marker-Datei
+ * storage/.preview existiert (leere Datei genügt). Die Datei wird per
+ * .gitignore vom Repository ausgeschlossen und liegt im storage/-Ordner,
+ * der Deployments überlebt - Code ist damit in preview und main identisch.
+ */
+function isPreview(): bool
+{
+    static $preview = null;
+    if ($preview === null) {
+        $preview = is_file(__DIR__ . '/storage/.preview');
+    }
+    return $preview;
+}
+
+/** Seitentitel; in der Preview mit Präfix "[Preview]". */
+function pageTitle(string $suffix = ''): string
+{
+    $title = 'Swiyu Trust Registry Explorer' . $suffix;
+    return isPreview() ? '[Preview] ' . $title : $title;
+}
+
+/** <title>, Favicons und (nur Preview) noindex für den <head>. */
+function renderHeadMeta(string $suffix = ''): string
+{
+    $p = isPreview() ? '-preview' : '';
+    $out  = '<title>' . htmlspecialchars(pageTitle($suffix)) . "</title>\n";
+    $out .= '<link rel="icon" href="' . htmlspecialchars(assetUrl('favicon' . $p . '.svg')) . '" type="image/svg+xml">' . "\n";
+    $out .= '<link rel="alternate icon" href="' . htmlspecialchars(assetUrl('favicon' . $p . '.ico')) . '">' . "\n";
+    $out .= '<link rel="apple-touch-icon" href="' . htmlspecialchars(assetUrl('apple-touch-icon' . $p . '.png')) . '">' . "\n";
+    if (isPreview()) {
+        $out .= '<meta name="robots" content="noindex, nofollow">' . "\n";
+    }
+    return $out;
+}
+
+/** "PREVIEW"-Badge neben dem Seitentitel (leer auf PROD). */
+function renderPreviewBadge(): string
+{
+    return isPreview() ? '<span class="env-badge" title="Preview">PREVIEW</span>' : '';
+}
+
+/**
+ * URL einer Datei aus assets/ mit Inhalts-Hash als Cache-Buster
+ * (z.B. assets/theme.css?v=1a2b3c4d). Ändert sich die Datei, ändert sich die
+ * URL, und Browser laden sie neu - ohne dass nach einem Deploy der Cache
+ * geleert werden muss. Fehlt die Datei, wird die URL ohne Parameter geliefert.
+ */
+function assetUrl(string $path): string
+{
+    static $cache = [];
+    if (!isset($cache[$path])) {
+        $file = __DIR__ . '/assets/' . $path;
+        $hash = is_file($file) ? substr((string)md5_file($file), 0, 8) : '';
+        $cache[$path] = 'assets/' . $path . ($hash !== '' ? '?v=' . $hash : '');
+    }
+    return $cache[$path];
+}
+
+/** Fusszeile mit Version (Link auf das GitHub-Release) und Repository-Link. */
+function renderFooter(array $config): string
+{
+    $version = trim((string)($config['version'] ?? ''));
+    $repo    = rtrim((string)($config['repo_url'] ?? ''), '/');
+    $out = '<footer class="app-footer">';
+    if ($version !== '') {
+        $label = 'v' . htmlspecialchars($version) . (isPreview() ? ' · preview' : '');
+        $out .= $repo !== ''
+            ? '<a href="' . htmlspecialchars($repo . '/releases/tag/v' . $version) . '" target="_blank" rel="noopener" class="app-version">' . $label . '</a>'
+            : '<span class="app-version">' . $label . '</span>';
+    }
+    if ($repo !== '') {
+        $out .= ($version !== '' ? ' · ' : '') . '<a href="' . htmlspecialchars($repo) . '" target="_blank" rel="noopener">GitHub</a>';
+    }
+    return $out . "</footer>\n";
+}
+
 function base64UrlDecode(string $data): string
 {
     $remainder = strlen($data) % 4;
@@ -43,6 +158,9 @@ function decodeJwt(string $jwt): array
 function httpGet(string $url): string
 {
     $ch = curl_init($url);
+    if ($ch === false) {
+        throw new RuntimeException(t('error.curl', [0, 'curl_init']));
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 20,
@@ -60,7 +178,7 @@ function httpGet(string $url): string
     if ($httpCode !== 200) {
         throw new RuntimeException(t('error.http_status', [$httpCode, $url]));
     }
-    if ($body === false || trim($body) === '') {
+    if (!is_string($body) || trim($body) === '') {
         throw new RuntimeException(t('error.empty_response'));
     }
     return trim($body);
@@ -102,10 +220,17 @@ function fetchStatusListBytes(string $uri): array
 /**
  * Liest den Statuswert an Position $idx aus den entpackten Statuslisten-
  * Bytes (bitweise, gemäss $bits pro Eintrag). null, wenn $idx ausserhalb
- * der verfügbaren Bytes liegt.
+ * der verfügbaren Bytes liegt, keine Bytes vorliegen oder die Werte aus der
+ * Statusliste ungültig sind: ein negativer Index würde in PHP sonst vom Ende
+ * des Strings lesen (falscher Status), und die Spezifikation erlaubt nur
+ * 1, 2, 4 oder 8 Bit pro Eintrag.
  */
-function extractStatusBit(string $bytes, int $bits, int $idx): ?int
+function extractStatusBit(?string $bytes, ?int $bits, int $idx): ?int
 {
+    if ($bytes === null || $bits === null || $idx < 0 || !in_array($bits, [1, 2, 4, 8], true)) {
+        return null;
+    }
+
     $bitOffset = $idx * $bits;
     $byteIndex = intdiv($bitOffset, 8);
     $bitShift  = $bitOffset % 8;
@@ -119,17 +244,39 @@ function extractStatusBit(string $bytes, int $bits, int $idx): ?int
 }
 
 /**
- * Übersetzt einen rohen Statuswert (0/1/2) in das lesbare Label.
- * Unbekannte Werte werden als "<Wert> (Unknown Status)" dargestellt.
+ * Übersetzt einen rohen Statuswert (0/1/2) in das lesbare Label der aktiven
+ * Sprache (Valid/Revoked/Suspended). Unbekannte Werte werden als
+ * "<Wert> (Unknown Status)" dargestellt.
+ *
+ * Wird bewusst erst beim ANZEIGEN aufgerufen und nie im Session-Cache
+ * abgelegt, sonst bliebe das Label nach einem Sprachwechsel in der alten
+ * Sprache stehen. Im Cache liegt nur der Rohwert plus ein sprachneutraler
+ * Marker (siehe statusDisplayLabel).
  */
 function statusLabel(?int $value): string
 {
-    static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
-
     if ($value === null) {
         return t('status.unavailable');
     }
-    return $labels[$value] ?? ($value . ' (Unknown Status)');
+    return match ($value) {
+        0 => t('status.valid'),
+        1 => t('status.revoked'),
+        2 => t('status.suspended'),
+        default => t('status.unknown_value', [$value]),
+    };
+}
+
+/**
+ * Anzeige-Label für einen gecachten Status: $value ist der Rohwert aus der
+ * Statusliste, $marker der sprachneutrale Marker aus dem Cache ('-' = keine
+ * Statuslisten-Referenz, 'unavailable' = nicht abrufbar, '' = Wert vorhanden).
+ */
+function statusDisplayLabel(?int $value, ?string $marker): string
+{
+    if ($value !== null) {
+        return statusLabel($value);
+    }
+    return $marker === '-' ? '-' : t('status.unavailable');
 }
 
 /**
@@ -147,15 +294,15 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
 
     $fetched = fetchStatusListBytes($uri);
     if ($fetched['error'] !== null) {
-        return ['status' => null, 'label' => t('status.unavailable'), 'error' => $fetched['error']];
+        return ['status' => null, 'label' => 'unavailable', 'error' => $fetched['error']];
     }
 
     $value = extractStatusBit($fetched['bytes'], $fetched['bits'], (int) $idx);
     if ($value === null) {
-        return ['status' => null, 'label' => t('status.unavailable'), 'error' => t('error.status_list_index_oob')];
+        return ['status' => null, 'label' => 'unavailable', 'error' => t('error.status_list_index_oob')];
     }
 
-    return ['status' => $value, 'label' => statusLabel($value), 'error' => null];
+    return ['status' => $value, 'label' => '', 'error' => null];
 }
 
 /**
@@ -167,7 +314,9 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
  * viele Einträge darauf verweisen — der jeweilige Index wird danach pro
  * Eintrag individuell aus denselben Bytes gelesen.
  *
- * Ergänzt an jedem Eintrag: '_status_value', '_status_label', '_status_error'.
+ * Ergänzt an jedem Eintrag: '_status_value', '_status_error' und '_status_label'
+ * (sprachneutraler Marker, kein Anzeigetext: '-', 'unavailable' oder ''; den
+ * Anzeigetext liefert erst statusDisplayLabel() beim Rendern).
  */
 function attachRowStatuses(array $entries): array
 {
@@ -194,19 +343,50 @@ function attachRowStatuses(array $entries): array
         $cached = $bytesCache[$uri];
         if ($cached['error'] !== null) {
             $entry['_status_value'] = null;
-            $entry['_status_label'] = t('status.unavailable');
+            $entry['_status_label'] = 'unavailable';
             $entry['_status_error'] = $cached['error'];
             continue;
         }
 
         $value = extractStatusBit($cached['bytes'], $cached['bits'], (int) $idx);
         $entry['_status_value'] = $value;
-        $entry['_status_label'] = $value === null ? t('status.unavailable') : statusLabel($value);
+        $entry['_status_label'] = $value === null ? 'unavailable' : '';
         $entry['_status_error'] = $value === null ? t('error.status_list_index_oob') : null;
     }
     unset($entry);
 
     return $entries;
+}
+
+/**
+ * Ordnet einen Eintrag (mit '_status_value' aus attachRowStatuses) einer von
+ * vier Gruppen zu: 'valid' (Statuslist-Wert 0), 'revoked' (1), 'suspended' (2)
+ * oder 'unknown' (kein Status ermittelbar: keine Statuslist-Referenz,
+ * Statuslist nicht erreichbar, Index ausserhalb, unbekannter Wert).
+ * Nur der Status aus der Statusliste zählt, die Validity (nbf/exp) nicht.
+ */
+function statusBucket(array $entry): string
+{
+    return match ($entry['_status_value'] ?? null) {
+        0       => 'valid',
+        1       => 'revoked',
+        2       => 'suspended',
+        default => 'unknown',
+    };
+}
+
+/**
+ * Zählt die Einträge pro Status-Gruppe (siehe statusBucket()).
+ *
+ * @return array{valid:int, revoked:int, suspended:int, unknown:int}
+ */
+function statusBucketCounts(array $entries): array
+{
+    $counts = ['valid' => 0, 'revoked' => 0, 'suspended' => 0, 'unknown' => 0];
+    foreach ($entries as $entry) {
+        $counts[statusBucket($entry)]++;
+    }
+    return $counts;
 }
 
 /**
@@ -233,7 +413,7 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
         foreach ($source['entries'] as $sourceEntry) {
             $sub = $sourceEntry['sub'] ?? null;
             $name = $sourceEntry['entity_name'] ?? null;
-            if ($sub !== null && $name !== null && $name !== '') {
+            if (is_string($sub) && $name !== null && $name !== '') {
                 $nameBySub[$sub] = $name;
             }
         }
@@ -242,7 +422,8 @@ function attachEntityNames(array $entries, string $envKey, string $baseUrl, stri
     }
 
     foreach ($entries as &$entry) {
-        $entry['_entity_name'] = $nameBySub[$entry[$didField] ?? null] ?? null;
+        $did = $entry[$didField] ?? null;
+        $entry['_entity_name'] = is_string($did) ? ($nameBySub[$did] ?? null) : null;
     }
     unset($entry);
 
@@ -280,7 +461,7 @@ function buildIssuersByVct(array $piaTsEntries): array
 
 /**
  * Reichert piTLS-Einträge (scalar_list: ['value' => <VCT>]) um
- * '_issuer_count' und '_issuers' (die vollständigen piaTS-Einträge, für die
+ * '_issuer_count' (nur gültige Issuer), '_issuer_total' und '_issuers' (die vollständigen piaTS-Einträge, für die
  * aufklappbare Detailansicht) an — nachgeschlagen über $sourceApiKey
  * (piaTS) derselben Umgebung. Nutzt deren Session-Cache, löst also KEINEN
  * zusätzlichen API-Call aus, wenn piaTS schon geladen war.
@@ -290,6 +471,7 @@ function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, str
     if (!isset($allApis[$sourceApiKey])) {
         foreach ($entries as &$entry) {
             $entry['_issuer_count'] = 0;
+            $entry['_issuer_total'] = 0;
             $entry['_issuers'] = [];
         }
         return $entries;
@@ -305,8 +487,13 @@ function attachIssuerCounts(array $entries, string $envKey, string $baseUrl, str
     foreach ($entries as &$entry) {
         $vct = $entry['value'] ?? null;
         $issuers = ($vct !== null && isset($byVct[$vct])) ? $byVct[$vct] : [];
-        $entry['_issuer_count'] = count($issuers);
-        $entry['_issuers'] = $issuers;
+        // Nur Issuer mit gültigem Status (Statuslist-Wert 0) werden gezählt und
+        // in der aufklappbaren Liste angezeigt; widerrufene/suspendierte/
+        // unbekannte nicht. '_issuer_total' hält die Gesamtzahl für den Hinweis.
+        $validIssuers = array_values(array_filter($issuers, static fn (array $i): bool => statusBucket($i) === 'valid'));
+        $entry['_issuer_count'] = count($validIssuers);
+        $entry['_issuer_total'] = count($issuers);
+        $entry['_issuers'] = $validIssuers;
     }
     unset($entry);
 
@@ -363,6 +550,7 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
                 'status_value' => $status['status'],
                 'status_label' => $status['label'],
                 'status_error' => $status['error'],
+                'jwt'          => $raw,
             ];
         }
 
@@ -370,35 +558,83 @@ function fetchAllEntries(string $envKey, string $baseUrl, array $apiCfg, array $
     }
 
     if ($apiCfg['mode'] === 'paginated_jwt') {
+        // Siehe PAGINATED_PASSES: Einträge über ihre jti eindeutig machen und so
+        // lange weitere Durchläufe machen, bis page.totalElements erreicht ist.
         $entries = [];
-        $page = 0;
-        $totalPages = 1;
+        $seen = [];
+        $totalElements = null;
+        $useSort = true;
 
-        do {
-            // Explizit filterActive=false (statt den Parameter wegzulassen):
-            // der Default bei fehlendem Parameter ist serverseitig "true", ein
-            // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
-            // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
-            // needs to validate the statements and cannot assume that all
-            // statements returned are indeed active") — der Explorer holt daher
-            // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
-            // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
-            // (Status-Badge / Validity-Badge).
-            $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=20';
-            $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+        foreach (PAGINATED_PASSES as [$size, $dir]) {
+            $sort = $useSort
+                ? '&sort=iat%2C' . $dir . '&sort=nbf%2C' . $dir . '&sort=exp%2C' . $dir
+                : '';
+            $page = 0;
+            $totalPages = 1;
 
-            foreach ($json['content'] ?? [] as $jwt) {
-                $decoded = decodeJwt($jwt);
-                // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
-                // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht.
-                $entry = $decoded['payload'];
-                $entry['_jwt_header'] = $decoded['header'];
-                $entries[] = $entry;
+            do {
+                // Explizit filterActive=false (statt den Parameter wegzulassen):
+                // der Default bei fehlendem Parameter ist serverseitig "true", ein
+                // Weglassen würde also weiterhin gefiltert. Ausserdem ist das Flag
+                // laut API-Doku ohnehin nur ein Best-Effort-Hinweis ("client still
+                // needs to validate the statements and cannot assume that all
+                // statements returned are indeed active") — der Explorer holt daher
+                // IMMER alle Einträge (aktiv + inaktiv) und verlässt sich für die
+                // eigentliche Gültigkeit auf die eigene client-seitige Prüfung
+                // (Status-Badge / Validity-Badge).
+                $pagedUrl = $url . '?filterActive=false&page=' . $page . '&size=' . $size . $sort;
+                try {
+                    $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                } catch (RuntimeException $e) {
+                    // Eine API, die das sort-Argument ablehnt: ohne Sortierung neu starten.
+                    if ($sort !== '' && $page === 0) {
+                        $useSort = false;
+                        $sort = '';
+                        $pagedUrl = $url . '?filterActive=false&page=0&size=' . $size;
+                        $json = json_decode(httpGet($pagedUrl), true, flags: JSON_THROW_ON_ERROR);
+                    } else {
+                        throw $e;
+                    }
+                }
+
+                foreach ($json['content'] ?? [] as $jwt) {
+                    $decoded = decodeJwt($jwt);
+                    // Payload bleibt an der Wurzel (für Spalten-Pfade wie "request.scope"),
+                    // der Header wird unter '_jwt_header' mitgeführt für die Detailansicht,
+                    // das Original-JWT unter '_jwt' für die Rohdaten-Ansicht.
+                    $entry = $decoded['payload'];
+                    $entry['_jwt_header'] = $decoded['header'];
+                    $entry['_jwt'] = $jwt;
+
+                    $key = isset($entry['jti']) && is_string($entry['jti']) && $entry['jti'] !== ''
+                        ? 'jti:' . $entry['jti']
+                        : 'jwt:' . md5((string) $jwt);
+                    if (isset($seen[$key])) {
+                        continue;
+                    }
+                    $seen[$key] = true;
+                    $entries[] = $entry;
+                }
+
+                $totalPages = (int) ($json['page']['totalPages'] ?? 1);
+                if ($page === 0 && isset($json['page']['totalElements'])) {
+                    $totalElements = (int) $json['page']['totalElements'];
+                }
+                $page++;
+            } while ($page < $totalPages);
+
+            // Vollständig — oder die API nennt keine Gesamtanzahl (dann reicht ein Durchlauf).
+            if ($totalElements === null || count($entries) >= $totalElements) {
+                break;
             }
+        }
 
-            $totalPages = (int) ($json['page']['totalPages'] ?? 1);
-            $page++;
-        } while ($page < $totalPages);
+        // Die Durchläufe laden teils aufsteigend; die Anzeige-Reihenfolge soll
+        // aber wie gewohnt "neueste zuerst" sein (iat absteigend, dann nbf).
+        // usort ist stabil: bei Gleichstand bleibt die Lade-Reihenfolge erhalten.
+        usort($entries, static fn(array $a, array $b): int =>
+            [(int) ($b['iat'] ?? 0), (int) ($b['nbf'] ?? 0)] <=> [(int) ($a['iat'] ?? 0), (int) ($a['nbf'] ?? 0)]
+        );
 
         if (!empty($apiCfg['row_status'])) {
             $entries = attachRowStatuses($entries);
@@ -630,7 +866,7 @@ function formatCellValue(mixed $value, string $type): string
         'list'     => is_array($value) ? htmlspecialchars(implode(', ', $value)) : htmlspecialchars((string) $value),
         // Zeigt einen PHP-Bool literal als "true"/"false" (keine Übersetzung, 1:1 wie im JWT).
         'raw_bool' => is_bool($value) ? ($value ? 'true' : 'false') : htmlspecialchars((string) $value),
-        default    => htmlspecialchars(is_scalar($value) ? (string) $value : json_encode($value)),
+        default    => htmlspecialchars(is_scalar($value) ? (string) $value : (string) json_encode($value, JSON_INVALID_UTF8_SUBSTITUTE)),
     };
 }
 
@@ -706,7 +942,7 @@ function formatStatusBadgeCell(array $entry): string
     }
 
     $value = $entry['_status_value'] ?? null;
-    $label = $entry['_status_label'] ?? '-';
+    $label = statusDisplayLabel($value, $entry['_status_label'] ?? '-');
 
     if ($label === '-') {
         return '-';
@@ -794,14 +1030,19 @@ function formatIssuerCountCell(array $entry, string $envKey, string $targetApiKe
         default => $count . ' Issuers',
     };
 
+    // Hinweis, wenn nicht alle Issuer gezählt werden (widerrufen/suspendiert/unbekannt).
+    $total = (int) ($entry['_issuer_total'] ?? $count);
+    $title = $total > $count ? ' title="' . htmlspecialchars(t('issuers.not_counted', [$total - $count, $total])) . '"' : '';
+
     if ($count === 0) {
-        return '<span class="issuer-count issuer-count-zero">' . htmlspecialchars($label) . '</span>';
+        return '<span class="issuer-count issuer-count-zero"' . $title . '>' . htmlspecialchars($label) . '</span>';
     }
 
+    // piaTS wird mit dem Filter "nur gültige" geöffnet (passend zur gezählten Zahl).
     $vct = (string) ($entry['value'] ?? '');
-    $url = '?' . http_build_query(['env' => $envKey, 'api' => $targetApiKey, 'q' => $vct]);
+    $url = '?' . http_build_query(['env' => $envKey, 'api' => $targetApiKey, 'q' => $vct, 'status' => 'valid']);
 
-    return '<a href="' . htmlspecialchars($url) . '" class="issuer-count-link" onclick="event.stopPropagation()">'
+    return '<a href="' . htmlspecialchars($url) . '" class="issuer-count-link"' . $title . ' onclick="event.stopPropagation()">'
         . htmlspecialchars($label) . '</a>';
 }
 
@@ -870,6 +1111,43 @@ function formatValidityBadgeCell(array $entry): string
 }
 
 /**
+ * Text einer Tabellenzelle für den CSV-Export: dieselben Formatter wie die
+ * HTML-Tabelle, danach als Klartext (Status/Validity ohne Pille, <br> wird
+ * zu einem Zeilenumbruch in der Zelle).
+ */
+function exportCellText(array $entry, array $col, string $envKey, string $issuerApiKey): string
+{
+    $html = match ($col['type']) {
+        'multilang'     => formatMultilangCell($entry, $col['key']),
+        'registry_ids'  => formatRegistryIdsCell(getPath($entry, $col['key'])),
+        'status_badge'  => formatStatusBadgeCell($entry),
+        'vct_values'    => formatVctValuesCell($entry),
+        'can_issue'     => formatCanIssueCell($entry),
+        'validity_badge' => formatValidityBadgeCell($entry),
+        'issuer_count'  => formatIssuerCountCell($entry, $envKey, $issuerApiKey),
+        default         => formatCellValue(getPath($entry, $col['key']), $col['type']),
+    };
+
+    $text = preg_replace('#<br\s*/?>#i', "\n", $html) ?? $html;
+    $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    return trim($text);
+}
+
+/**
+ * Maskiert einen Wert für eine CSV-Zelle (Trennzeichen ';', Anführungszeichen
+ * verdoppelt). Werte stammen aus externen Registries: beginnt ein Wert mit
+ * =, +, @ (oder '-' gefolgt von weiterem Text), würde Excel ihn als Formel
+ * auswerten — dem wird ein Apostroph vorangestellt (CSV-/Formula-Injection).
+ */
+function csvCell(string $value): string
+{
+    if ($value !== '' && (strpbrk($value[0], "=+@\t\r") !== false || ($value[0] === '-' && strlen($value) > 1 && !is_numeric($value)))) {
+        $value = "'" . $value;
+    }
+    return '"' . str_replace('"', '""', $value) . '"';
+}
+
+/**
  * Prüft, ob ein Array assoziativ ist (vs. einer sequentiellen Liste entspricht).
  */
 function isAssocArray(array $arr): bool
@@ -920,7 +1198,7 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
     if (isAssocArray($data)) {
         $html = '<table class="detail-kv">';
         foreach ($data as $key => $value) {
-            if ($key === '_jwt_header' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
+            if ($key === '_jwt_header' || $key === '_jwt' || $key === '_status_value' || $key === '_status_label' || $key === '_status_error' || $key === '_entity_name') {
                 continue; // Header wird separat gerendert, diese Felder sind synthetisch (eigene Spalte/Badge)
             }
             $label = htmlspecialchars((string) $key);
@@ -955,6 +1233,10 @@ function renderDetailTree(mixed $data, array $dateKeys = ['nbf', 'exp', 'iat']):
  * Eintrag. Der JWT-Header steht zuerst, da er den Payload technisch "einleitet".
  * $showHeader = false unterdrückt den Header-Abschnitt (z.B. bei vqPS, wo der
  * Header bei jedem Eintrag identisch ist und daher keinen Mehrwert bietet).
+ *
+ * Ist das Original-JWT vorhanden ('_jwt'), gibt es oben einen Umschalter
+ * "Aufbereitet | Rohdaten" (wie beim Base Registry): Rohdaten = das unverändert
+ * dekodierte JSON (siehe renderRawJwt()).
  */
 function renderEntryDetail(array $entry, bool $showHeader = true): string
 {
@@ -965,7 +1247,60 @@ function renderEntryDetail(array $entry, bool $showHeader = true): string
         $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.jwt_header')) . '</h4>' . renderDetailTree($header) . '</div>';
     }
     $html .= '<div class="detail-section"><h4>' . htmlspecialchars(t('detail.payload_full')) . '</h4>' . renderDetailTree($entry) . '</div>';
-    return $html;
+
+    $jwt = $entry['_jwt'] ?? null;
+    if (!is_string($jwt) || $jwt === '') {
+        return $html;
+    }
+
+    return '<div class="raw-root">'
+        . '<div class="raw-switch"><div class="br-seg" role="group">'
+        .   '<button type="button" class="active" data-raw-view="parsed">' . htmlspecialchars(t('detail.view_parsed')) . '</button>'
+        .   '<button type="button" data-raw-view="raw">' . htmlspecialchars(t('detail.view_raw')) . '</button>'
+        . '</div></div>'
+        . '<div data-raw-pane="parsed">' . $html . '</div>'
+        . '<div data-raw-pane="raw" hidden>' . renderRawJwt($jwt, $showHeader) . '</div>'
+        . '</div>';
+}
+
+/** Ein JWT-Segment (Base64URL) als formatiertes JSON; bei Fehlern der rohe Text. */
+function prettyJwtSegment(string $segment): string
+{
+    $json = base64UrlDecode($segment);
+    // Als Objekte (nicht assoziativ) dekodieren, damit leere {} nicht zu [] werden.
+    $decoded = json_decode($json);
+    return $decoded === null
+        ? $json
+        : (string) json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+}
+
+/**
+ * Rohdaten-Ansicht eines JWT: Header und Payload als formatiertes JSON sowie das
+ * Original-JWT (kompakt, inkl. Signatur), je mit Kopieren-Knopf. Reine Anzeige,
+ * es wird nichts an Dritte gesendet.
+ */
+function renderRawJwt(string $jwt, bool $showHeader = true): string
+{
+    $parts = explode('.', trim($jwt));
+    if (count($parts) < 2) {
+        return '';
+    }
+
+    $block = static function (string $title, string $content, bool $pre = true): string {
+        return '<div class="br-raw-wrap raw-block">'
+            . '<div class="br-raw-head"><h4>' . htmlspecialchars($title) . '</h4>'
+            . '<span class="br-raw-actions"><button type="button" class="br-btn" data-raw-copy data-copied="' . htmlspecialchars(t('base.copied')) . '">' . htmlspecialchars(t('base.copy')) . '</button></span></div>'
+            . '<pre class="br-raw' . ($pre ? '' : ' raw-token') . '">' . htmlspecialchars($content) . '</pre>'
+            . '</div>';
+    };
+
+    $html = '';
+    if ($showHeader) {
+        $html .= $block(t('detail.raw_header'), prettyJwtSegment($parts[0]));
+    }
+    $html .= $block(t('detail.raw_payload'), prettyJwtSegment($parts[1]));
+    $html .= $block(t('detail.raw_token'), trim($jwt), false);
+    return '<div class="raw-view">' . $html . '</div>';
 }
 
 /**
@@ -984,19 +1319,70 @@ function flattenForSearch(mixed $value): string
 }
 
 /**
- * Filtert eine Liste von Einträgen anhand eines Suchbegriffs (case-insensitive,
- * über alle Felder des Eintrags hinweg).
+ * Zerlegt eine Suchanfrage in OR-Gruppen aus AND-Termen.
+ * Syntax: Leerzeichen und "AND" verknüpfen mit UND, "OR" mit ODER (bindet
+ * schwächer als UND), "Anführungszeichen" ergeben eine exakte Phrase,
+ * ein vorangestelltes "-" schliesst einen Begriff aus.
+ * Rückgabe: Liste von Gruppen; jede Gruppe ist eine Liste von
+ * ['text' => string (lowercase), 'not' => bool].
+ */
+function parseSearchQuery(string $query): array
+{
+    preg_match_all('/(-?)"([^"]*)"|(\S+)/u', $query, $m, PREG_SET_ORDER);
+    $groups = [[]];
+    foreach ($m as $t) {
+        if (isset($t[3]) && $t[3] !== '') {
+            $word = $t[3];
+            if ($word === 'AND') {
+                continue;
+            }
+            if ($word === 'OR') {
+                if ($groups[count($groups) - 1] !== []) {
+                    $groups[] = [];
+                }
+                continue;
+            }
+            $not = false;
+            if (strlen($word) > 1 && $word[0] === '-') {
+                $not = true;
+                $word = substr($word, 1);
+            }
+            $groups[count($groups) - 1][] = ['text' => mb_strtolower($word), 'not' => $not];
+        } else {
+            $phrase = trim($t[2]);
+            if ($phrase !== '') {
+                $groups[count($groups) - 1][] = ['text' => mb_strtolower($phrase), 'not' => $t[1] === '-'];
+            }
+        }
+    }
+    return array_values(array_filter($groups, fn($g) => $g !== []));
+}
+
+/**
+ * Filtert eine Liste von Einträgen anhand einer Suchanfrage (case-insensitive,
+ * über alle Felder des Eintrags hinweg). Mehrere Begriffe werden mit UND
+ * verknüpft (siehe parseSearchQuery() für OR, Phrasen und Ausschluss).
  */
 function filterEntries(array $entries, string $query): array
 {
-    $query = trim($query);
-    if ($query === '') {
+    $groups = parseSearchQuery(trim($query));
+    if ($groups === []) {
         return $entries;
     }
-    $needle = mb_strtolower($query);
 
-    return array_values(array_filter($entries, function ($entry) use ($needle) {
-        return str_contains(mb_strtolower(flattenForSearch($entry)), $needle);
+    return array_values(array_filter($entries, function ($entry) use ($groups) {
+        // Das Original-JWT (Base64URL) würde sonst zufällige Treffer liefern
+        unset($entry['_jwt']);
+        $haystack = mb_strtolower(flattenForSearch($entry));
+        foreach ($groups as $terms) {
+            foreach ($terms as $term) {
+                if (str_contains($haystack, $term['text']) === $term['not']) {
+                    continue 2;
+                }
+            }
+            return true;
+        }
+        return false;
     }));
 }
 
@@ -1020,7 +1406,7 @@ function getSortValue(array $entry, array $col): int|float|string
             return mb_strtolower((string) (reset($vals) ?: ''));
         })(),
         'registry_ids' => mb_strtolower(strip_tags(formatRegistryIdsCell(getPath($entry, $col['key'])))),
-        'status_badge' => mb_strtolower((string) ($entry['_status_label'] ?? '')),
+        'status_badge' => mb_strtolower(statusDisplayLabel(isset($entry['_status_value']) ? (int) $entry['_status_value'] : null, $entry['_status_label'] ?? '-')),
         'validity_badge' => mb_strtolower(computeValidity($entry['nbf'] ?? null, $entry['exp'] ?? null)['label']),
         'vct_values' => mb_strtolower(strip_tags(formatVctValuesCell($entry))),
         'can_issue' => mb_strtolower(strip_tags(formatCanIssueCell($entry))),
@@ -1229,6 +1615,9 @@ function baseRegistryDidInfo(string $did, string $registryUrl): ?array
 function httpGetStatus(string $url, int $timeout = 10): array
 {
     $ch = curl_init($url);
+    if ($ch === false) {
+        return ['code' => 0, 'body' => '', 'error' => t('error.curl', [0, 'curl_init'])];
+    }
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => $timeout,
@@ -1817,4 +2206,38 @@ function renderBaseRegistrySearchPanel(array $results, ?string $entityName): str
     }
 
     return $html . '</div></section>' . $dialogs;
+}
+
+/**
+ * Runder "?"-Button im Seitenkopf: startet die geführte Tour. Ohne JavaScript
+ * (und auf der History-Seite) ist es ein normaler Link auf den Explorer mit
+ * ?tour=1, assets/tour.js fängt den Klick auf dem Explorer selbst ab.
+ */
+function renderTourHelpButton(): string
+{
+    $label = htmlspecialchars(t('tour.help_aria'));
+    return '<a class="tour-help" href="index.php?tour=1" data-tour="help" role="button"'
+        . ' aria-label="' . $label . '" title="' . $label . '">?</a>';
+}
+
+/**
+ * Bindet die geführte Tour ein: Texte der aktiven Sprache als JSON (alle
+ * Keys mit Präfix "tour.", Englisch als Fallback) plus tour.css/tour.js.
+ * Nur auf dem Explorer einbinden, dort läuft die Tour.
+ */
+function renderTourAssets(): string
+{
+    $dict = i18nDict();
+    // Rohtexte (ohne vsprintf): "tour.step" enthält %d-Platzhalter, die JS füllt.
+    $lang = currentLang();
+    $texts = [];
+    foreach (($dict['en'] ?? []) as $key => $fallback) {
+        if (str_starts_with($key, 'tour.')) {
+            $texts[substr($key, 5)] = $dict[$lang][$key] ?? $fallback;
+        }
+    }
+    $json = json_encode($texts, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    return '<script type="application/json" id="tour-data">' . $json . "</script>\n"
+        . '<link rel="stylesheet" href="' . htmlspecialchars(assetUrl('tour.css')) . "\">\n"
+        . '<script src="' . htmlspecialchars(assetUrl('tour.js')) . "\"></script>\n";
 }

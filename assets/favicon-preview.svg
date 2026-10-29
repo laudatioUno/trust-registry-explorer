@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Trust Registry Explorer Logo (Preview)">
+  <style>
+    /* Grau, >= 4.5:1 gegen weisse (hell) bzw. #202124 (dunkel) Tab-Hintergruende */
+    .bar { fill: #6B7075; }
+    .seal { fill: #3C4043; }
+    .check { stroke: #ffffff; }
+    @media (prefers-color-scheme: dark) {
+      .bar { fill: #9AA0A6; }
+      .seal { fill: #D0D3D6; }
+      .check { stroke: #202124; }
+    }
+  </style>
+  <rect class="bar" x="12" y="14" width="76" height="16" rx="6"/>
+  <rect class="bar" x="12" y="40" width="76" height="16" rx="6"/>
+  <rect class="bar" x="12" y="66" width="48" height="16" rx="6"/>
+  <circle class="seal" cx="76" cy="74" r="20"/>
+  <path class="check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

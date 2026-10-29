@@ -6,3 +6,17 @@ storage/*.sqlite
 storage/*.sqlite-wal
 storage/*.sqlite-shm
 storage/collect.log
+
+# Preview-Marker: leere Datei, wird pro Server von Hand angelegt
+# (touch storage/.preview). Nicht versionieren, damit PROD nie
+# versehentlich als Preview erscheint.
+storage/.preview
+
+# Lokale, installationsspezifische Konfiguration (z.B. zusätzliche
+# Umgebungen); siehe README "Local configuration".
+storage/config.local.php
+
+# Composer (nur Dev-Tooling, siehe README "Security checks")
+/vendor/
+psalm.sarif
+psalm-taint.sarif

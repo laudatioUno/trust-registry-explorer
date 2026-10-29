@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<!--
+  Static analysis (SAST) with Psalm, run by .github/workflows/psalm.yml.
+  errorLevel: 1 = strictest ... 8 = most lenient. Start at 4, tighten step by step.
+  Taint analysis (user input -> echo / SQL / curl / include) is a separate run
+  (psalm with the taint-analysis flag) and does not depend on the level.
+-->
+<psalm
+    errorLevel="4"
+    phpVersion="8.3"
+    resolveFromConfigFile="true"
+    autoloader="psalm-bootstrap.php"
+    findUnusedBaselineEntry="false"
+    findUnusedCode="false"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://getpsalm.org/schema/config"
+    xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    errorBaseline="psalm-baseline.xml"
+>
+    <projectFiles>
+        <file name="index.php"/>
+        <file name="history.php"/>
+        <file name="base_registry.php"/>
+        <file name="collect.php"/>
+        <file name="functions.php"/>
+        <file name="i18n.php"/>
+        <file name="config.php"/>
+        <file name="lang.php"/>
+        <file name="ui_extras.php"/>
+    </projectFiles>
+</psalm>

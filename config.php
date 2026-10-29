@@ -24,17 +24,29 @@
  * history.php tun das bereits als allerersten Require).
  */
 
-return [
+$config = [
+
+    // Anwendungsversion (Semantic Versioning). Wird in der Fusszeile angezeigt
+    // und von der GitHub-Action .github/workflows/release.yml gelesen: ändert
+    // sich dieser Wert auf main, entsteht automatisch Tag + Release (+ ZIP).
+    // Nur im Release-PR anpassen.
+    'version'  => '1.2.5',
+    'repo_url' => 'https://github.com/laudatioUno/trust-registry-explorer',
 
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
     // base_registry_url: Base Registry derselben Umgebung (did.jsonl pro DID,
     //                    siehe 'base_registry' unten)
+    // 'label' ist der angezeigte Name: "Production" und "Sandbox" (so heissen die
+    // beiden Umgebungen auch in der swiyu-Dokumentation). Die Array-Schlüssel
+    // PROD und INT-PROD sind die internen Codenamen und bleiben unverändert,
+    // damit bestehende URLs (?env=PROD), die gesammelte History und die
+    // lokale Konfiguration weiter funktionieren.
+    // Hier stehen nur die öffentlichen Umgebungen. Weitere (z.B. interne
+    // Vorsysteme) gehören NICHT ins Repository, sondern pro Installation in
+    // storage/config.local.php (siehe Ende dieser Datei und README).
     'environments' => [
-        'REF'      => ['label' => 'REF',      'base_url' => 'https://trust-reg-r.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-r.trust-infra.swiyu.admin.ch'],
-        'ABN'      => ['label' => 'ABN',      'base_url' => 'https://trust-reg-a.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu.admin.ch'],
-        'INT-ABN'  => ['label' => 'INT-ABN',  'base_url' => 'https://trust-reg-a.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg-a.trust-infra.swiyu-int.admin.ch'],
-        'PROD'     => ['label' => 'PROD',     'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
-        'INT-PROD' => ['label' => 'INT-PROD', 'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
+        'PROD'     => ['label' => 'Production', 'base_url' => 'https://trust-reg.trust-infra.swiyu.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu.admin.ch'],
+        'INT-PROD' => ['label' => 'Sandbox',    'base_url' => 'https://trust-reg.trust-infra.swiyu-int.admin.ch', 'base_registry_url' => 'https://identifier-reg.trust-infra.swiyu-int.admin.ch'],
     ],
 
     // Base Registry: pro DID wird das did.jsonl (did:tdw 0.3 und did:webvh 1.0)
@@ -69,8 +81,9 @@ return [
                 ['key' => 'entity_name',    'label' => 'Entity Name',      'type' => 'text'],
                 ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
                 ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
-                ['key' => '_status_value',  'label' => 'Status',           'type' => 'status_badge'],
-                ['key' => 'validity',       'label' => 'Validity',         'type' => 'validity_badge'],
+                ['key' => 'iat',            'label' => t('col.issued_at'), 'type' => 'unix'],
+                ['key' => '_status_value',  'label' => t('common.status'),           'type' => 'status_badge'],
+                ['key' => 'validity',       'label' => t('common.validity'),         'type' => 'validity_badge'],
             ],
             'doc_url'     => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#identity-trust-statement-idts',
         ],
@@ -119,7 +132,7 @@ return [
             'issuer_count_from' => 'piaTS',
             'columns'     => [
                 ['key' => 'value',         'label' => t('col.vct_value'),           'type' => 'text'],
-                ['key' => '_issuer_count', 'label' => 'Amount of allowed issuers',  'type' => 'issuer_count'],
+                ['key' => '_issuer_count', 'label' => t('col.issuer_count'), 'type' => 'issuer_count'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-trust-list-statement-pitls',
         ],
@@ -139,8 +152,8 @@ return [
                 ['key' => '_entity_name', 'label' => 'Name (from idTS)', 'type' => 'text'],
                 ['key' => 'vct_values',   'label' => 'VCT Values',       'type' => 'vct_values'],
                 ['key' => 'request.query.credentials.0.format', 'label' => 'Format', 'type' => 'text'],
-                ['key' => 'iat',          'label' => 'Issued At',        'type' => 'unix'],
-                ['key' => 'validity',     'label' => 'Validity',         'type' => 'validity_badge'],
+                ['key' => 'iat',          'label' => t('col.issued_at'), 'type' => 'unix'],
+                ['key' => 'validity',     'label' => t('common.validity'),         'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#verification-query-public-statement-vqps',
         ],
@@ -159,9 +172,9 @@ return [
             'columns'           => [
                 ['key' => '_entity_name', 'label' => 'Name (from idTS)',      'type' => 'text'],
                 ['key' => 'can_issue',    'label' => 'Can Issue',             'type' => 'can_issue'],
-                ['key' => 'iat',          'label' => 'Created At',            'type' => 'unix'],
-                ['key' => '_status_value','label' => 'Status (from Statuslist)', 'type' => 'status_badge'],
-                ['key' => 'validity',     'label' => 'Validity',              'type' => 'validity_badge'],
+                ['key' => 'iat',          'label' => t('col.issued_at'),      'type' => 'unix'],
+                ['key' => '_status_value','label' => t('common.status'), 'type' => 'status_badge'],
+                ['key' => 'validity',     'label' => t('common.validity'),              'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-authorization-trust-statement-piats',
         ],
@@ -181,8 +194,9 @@ return [
                 ['key' => 'sub',               'label' => 'DID',                'type' => 'text', 'class' => 'cell-did'],
                 ['key' => '_entity_name',      'label' => 'Name (from idTS)',    'type' => 'text'],
                 ['key' => 'authorized_fields', 'label' => 'Authorized Fields',   'type' => 'list'],
-                ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],
-                ['key' => 'validity',          'label' => 'Validity',            'type' => 'validity_badge'],
+                ['key' => 'iat',               'label' => t('col.issued_at'),    'type' => 'unix'],
+                ['key' => '_status_value',     'label' => t('common.status'),              'type' => 'status_badge'],
+                ['key' => 'validity',          'label' => t('common.validity'),            'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-verification-authorization-trust-statement-pvats',
         ],
@@ -227,3 +241,57 @@ return [
         ],
     ],
 ];
+
+// ---------------------------------------------------------------------------
+// Lokale Konfiguration (optional, nicht im Repository)
+//
+// Existiert storage/config.local.php, wird sie über die obige Konfiguration
+// gelegt. Sie liefert ein Array in derselben Struktur, z.B. zusätzliche
+// Umgebungen:
+//
+//   <?php
+//   return [
+//       'environments' => [
+//           'MY-ENV' => ['label' => 'MY-ENV', 'base_url' => 'https://...', 'base_registry_url' => 'https://...'],
+//       ],
+//       // optional: Reihenfolge der Tabs (die erste ist die Standard-Umgebung)
+//       'environment_order' => ['MY-ENV', 'PROD', 'INT-PROD'],
+//   ];
+//
+// Verschachtelte Schlüssel (z.B. 'environments', 'history') werden pro Eintrag
+// zusammengeführt, Listen und einfache Werte ersetzt. Die Datei ist per
+// .gitignore ausgeschlossen und wird von Deployments nicht überschrieben.
+// Ein Fehler darin legt die Anwendung nicht lahm: er wird protokolliert und
+// die Basis-Konfiguration bleibt aktiv.
+// ---------------------------------------------------------------------------
+$localFile = __DIR__ . '/storage/config.local.php';
+if (is_file($localFile)) {
+    try {
+        $local = (static function (string $file) {
+            return require $file;
+        })($localFile);
+        if (is_array($local)) {
+            $order = $local['environment_order'] ?? null;
+            unset($local['environment_order']);
+            foreach ($local as $key => $value) {
+                $isMap = static fn($v) => is_array($v) && ($v === [] || array_keys($v) !== range(0, count($v) - 1));
+                $config[$key] = ($isMap($value) && isset($config[$key]) && $isMap($config[$key]))
+                    ? array_replace_recursive($config[$key], $value)
+                    : $value;
+            }
+            if (is_array($order)) {
+                $sorted = [];
+                foreach ($order as $envKey) {
+                    if (isset($config['environments'][$envKey])) {
+                        $sorted[$envKey] = $config['environments'][$envKey];
+                    }
+                }
+                $config['environments'] = $sorted + $config['environments'];
+            }
+        }
+    } catch (\Throwable $e) {
+        error_log('config.local.php ignored: ' . $e->getMessage());
+    }
+}
+
+return $config;

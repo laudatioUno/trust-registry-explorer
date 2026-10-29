@@ -1,0 +1,137 @@
+name: Security checks
+
+# Static analysis (SAST) with Psalm plus a check of the dev dependencies for
+# known vulnerabilities. Errors and taint findings appear under Security >
+# Code scanning and as annotations on pull requests; info-level type notes
+# (code quality, not security) only in the job summary and the artifact.
+# Report-only for now: findings do not fail the run. See README "Security checks".
+on:
+  pull_request:
+    branches: [preview, main]
+  push:
+    branches: [preview, main]
+  schedule:
+    - cron: '23 4 * * 1'   # weekly, picks up new rules and advisories
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  psalm:
+    name: Psalm (types + taint analysis)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to Code scanning
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl, mbstring, pdo_sqlite, sqlite3, json
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        # composer.lock (if committed) pins the exact Psalm version
+        run: composer install --prefer-dist --no-progress --no-interaction || composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Psalm (types)
+        continue-on-error: true
+        run: vendor/bin/psalm --no-progress --no-cache --report=psalm.sarif
+
+      - name: Keep only errors for Code scanning
+        # psalm.sarif also contains info-level notes ("Possibly..." type hints
+        # below errorLevel). They are code quality, not security, and would
+        # bury real findings in Security > Code scanning. The full report
+        # stays in the job summary and the artifact.
+        if: always() && hashFiles('psalm.sarif') != ''
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open('psalm.sarif'))
+          for run in d.get('runs', []):
+              run['results'] = [r for r in run.get('results', []) if r.get('level') != 'note']
+          json.dump(d, open('psalm-errors.sarif', 'w'))
+          PY
+
+      - name: Psalm (taint analysis)
+        continue-on-error: true
+        run: vendor/bin/psalm --no-progress --no-cache --taint-analysis --report=psalm-taint.sarif
+
+      - name: Summarize findings
+        if: always()
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, os, collections
+          for name in ('psalm.sarif', 'psalm-taint.sarif'):
+              if not os.path.exists(name):
+                  print(f"### {name}: not produced\n")
+                  continue
+              runs = json.load(open(name)).get('runs', [])
+              results = [r for run in runs for r in run.get('results', [])]
+              print(f"### {name}: {len(results)} findings\n")
+              by_rule = collections.Counter(r.get('ruleId', '?') for r in results)
+              by_file = collections.Counter(
+                  r['locations'][0]['physicalLocation']['artifactLocation']['uri']
+                  for r in results if r.get('locations'))
+              print("| Rule | Count |\n|---|---|")
+              for k, v in by_rule.most_common(15):
+                  print(f"| {k} | {v} |")
+              print("\n| File | Count |\n|---|---|")
+              for k, v in by_file.most_common(10):
+                  print(f"| {k} | {v} |")
+              print()
+          PY
+
+      - name: Keep reports as artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: psalm-reports
+          path: |
+            psalm.sarif
+            psalm-taint.sarif
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload types report
+        if: always() && hashFiles('psalm-errors.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: psalm-errors.sarif
+          category: psalm
+
+      - name: Upload taint report
+        if: always() && hashFiles('psalm-taint.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: psalm-taint.sarif
+          category: psalm-taint
+
+  audit:
+    name: Composer audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction || composer update --prefer-dist --no-progress --no-interaction
+
+      - name: Audit
+        # The app has no runtime dependencies; this covers the dev tooling only.
+        run: composer audit

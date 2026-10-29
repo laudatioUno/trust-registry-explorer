@@ -1,0 +1,111 @@
+# Erstellt automatisch Tag, GitHub-Release und ZIP, sobald die Version in
+# config.php ('version' => 'X.Y.Z') auf main geändert wird. Die Release-Notes
+# bestehen aus den PRs, die seit dem vorherigen Release in main gemergt wurden
+# (Titel + Beschreibung, siehe .github/scripts/release_notes.py).
+#
+# - Existiert der Tag bereits, passiert beim Push nichts (z.B. bei anderen
+#   Änderungen an config.php).
+# - Manueller Start ("Run workflow"): erzeugt das Release, falls es fehlt, oder
+#   schreibt die Notes eines bestehenden Releases neu (Eingabe "tag", leer =
+#   Version aus config.php; "since" = optionales Startdatum YYYY-MM-DD, nur
+#   relevant, wenn es kein früheres Release gibt).
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [config.php]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag (z.B. v1.0.1); leer = Version aus config.php"
+        required: false
+      since:
+        description: "Notes erst ab Datum (YYYY-MM-DD), nur für das erste Release"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Determine tag
+        id: v
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            VERSION=$(grep -oP "^\s*'version'\s*=>\s*'\K[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+)?(?=')" config.php | head -n1)
+            if [ -z "$VERSION" ]; then
+              echo "::error::Could not read a semantic version from config.php"
+              exit 1
+            fi
+            TAG="v$VERSION"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the release exists
+        id: exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && gh release view "${{ steps.v.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Release ${{ steps.v.outputs.tag }} already exists, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build release notes
+        if: steps.exists.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          EXISTS: ${{ steps.exists.outputs.exists }}
+          SINCE: ${{ github.event.inputs.since }}
+        run: |
+          if [ "$EXISTS" = "true" ]; then
+            CUR_TS=$(gh release view "$TAG" --json createdAt -q .createdAt)
+          else
+            CUR_TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            export NOTES_REF="$GITHUB_SHA"
+          fi
+          PREV=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+            --jq "[.[] | select(.draft == false and .tag_name != \"$TAG\" and .created_at < \"$CUR_TS\")][0].tag_name // empty" | head -n1)
+          echo "Previous release: ${PREV:-none}"
+          python3 .github/scripts/release_notes.py "$GITHUB_REPOSITORY" "$TAG" "$PREV" "$SINCE" > release-notes.md
+          cat release-notes.md
+
+      - name: Build ZIP
+        if: steps.exists.outputs.skip == 'false' && steps.exists.outputs.exists == 'false'
+        run: |
+          NAME="trust-registry-explorer-${{ steps.v.outputs.tag }}"
+          git archive --format=zip --prefix="$NAME/" -o "$NAME.zip" HEAD
+          unzip -l "$NAME.zip" | tail -n 3
+
+      - name: Create release
+        if: steps.exists.outputs.skip == 'false' && steps.exists.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.v.outputs.tag }}"
+          PRE=""
+          case "$TAG" in *-*) PRE="--prerelease" ;; esac
+          gh release create "$TAG" "trust-registry-explorer-$TAG.zip" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG" \
+            --notes-file release-notes.md $PRE
+
+      - name: Update notes of the existing release
+        if: steps.exists.outputs.skip == 'false' && steps.exists.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${{ steps.v.outputs.tag }}" --notes-file release-notes.md
