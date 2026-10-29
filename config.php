@@ -30,7 +30,7 @@ $config = [
     // und von der GitHub-Action .github/workflows/release.yml gelesen: ändert
     // sich dieser Wert auf main, entsteht automatisch Tag + Release (+ ZIP).
     // Nur im Release-PR anpassen.
-    'version'  => '1.2.4',
+    'version'  => '1.2.5',
     'repo_url' => 'https://github.com/laudatioUno/trust-registry-explorer',
 
     // base_url:          Trust Registry (idTS, ncTLS, ... Trust Statements)
@@ -82,8 +82,8 @@ $config = [
                 ['key' => 'is_state_actor', 'label' => 'is_state_actor',   'type' => 'raw_bool'],
                 ['key' => 'registry_ids',   'label' => 'Registry IDs',     'type' => 'registry_ids'],
                 ['key' => 'iat',            'label' => t('col.issued_at'), 'type' => 'unix'],
-                ['key' => '_status_value',  'label' => 'Status',           'type' => 'status_badge'],
-                ['key' => 'validity',       'label' => 'Validity',         'type' => 'validity_badge'],
+                ['key' => '_status_value',  'label' => t('common.status'),           'type' => 'status_badge'],
+                ['key' => 'validity',       'label' => t('common.validity'),         'type' => 'validity_badge'],
             ],
             'doc_url'     => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#identity-trust-statement-idts',
         ],
@@ -132,7 +132,7 @@ $config = [
             'issuer_count_from' => 'piaTS',
             'columns'     => [
                 ['key' => 'value',         'label' => t('col.vct_value'),           'type' => 'text'],
-                ['key' => '_issuer_count', 'label' => 'Amount of allowed issuers',  'type' => 'issuer_count'],
+                ['key' => '_issuer_count', 'label' => t('col.issuer_count'), 'type' => 'issuer_count'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-trust-list-statement-pitls',
         ],
@@ -153,7 +153,7 @@ $config = [
                 ['key' => 'vct_values',   'label' => 'VCT Values',       'type' => 'vct_values'],
                 ['key' => 'request.query.credentials.0.format', 'label' => 'Format', 'type' => 'text'],
                 ['key' => 'iat',          'label' => t('col.issued_at'), 'type' => 'unix'],
-                ['key' => 'validity',     'label' => 'Validity',         'type' => 'validity_badge'],
+                ['key' => 'validity',     'label' => t('common.validity'),         'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#verification-query-public-statement-vqps',
         ],
@@ -173,8 +173,8 @@ $config = [
                 ['key' => '_entity_name', 'label' => 'Name (from idTS)',      'type' => 'text'],
                 ['key' => 'can_issue',    'label' => 'Can Issue',             'type' => 'can_issue'],
                 ['key' => 'iat',          'label' => t('col.issued_at'),      'type' => 'unix'],
-                ['key' => '_status_value','label' => 'Status (from Statuslist)', 'type' => 'status_badge'],
-                ['key' => 'validity',     'label' => 'Validity',              'type' => 'validity_badge'],
+                ['key' => '_status_value','label' => t('common.status'), 'type' => 'status_badge'],
+                ['key' => 'validity',     'label' => t('common.validity'),              'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-issuance-authorization-trust-statement-piats',
         ],
@@ -195,8 +195,8 @@ $config = [
                 ['key' => '_entity_name',      'label' => 'Name (from idTS)',    'type' => 'text'],
                 ['key' => 'authorized_fields', 'label' => 'Authorized Fields',   'type' => 'list'],
                 ['key' => 'iat',               'label' => t('col.issued_at'),    'type' => 'unix'],
-                ['key' => '_status_value',     'label' => 'Status',              'type' => 'status_badge'],
-                ['key' => 'validity',          'label' => 'Validity',            'type' => 'validity_badge'],
+                ['key' => '_status_value',     'label' => t('common.status'),              'type' => 'status_badge'],
+                ['key' => 'validity',          'label' => t('common.validity'),            'type' => 'validity_badge'],
             ],
             'doc_url'           => 'https://swiyu-admin-ch.github.io/specifications/trust-protocol-v2-0/#protected-verification-authorization-trust-statement-pvats',
         ],
