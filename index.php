@@ -705,7 +705,7 @@ if ($showPagination) {
                 <input type="text" name="q" title="<?= htmlspecialchars(t('toolbar.search_syntax')) ?>" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
                 <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
             </form>
-            <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.refresh')) ?></a>
+            <a class="toolbar-btn refresh-btn" title="<?= htmlspecialchars(t($cacheMinutes === 1 ? 'toolbar.refresh_title_one' : 'toolbar.refresh_title_other', [$cacheMinutes])) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.refresh')) ?></a>
             <?php if ($errorMessage === null && $apiKey !== null): ?>
                 <a class="toolbar-btn spec-btn" title="<?= htmlspecialchars(t('toolbar.export_csv_title')) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['export' => 'csv', 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.export_csv')) ?></a>
             <?php endif; ?>
