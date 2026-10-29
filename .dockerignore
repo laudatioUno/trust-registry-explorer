@@ -1,0 +1,18 @@
+.git
+.gitignore
+.dockerignore
+CLAUDE.md
+Dockerfile
+docker-compose.yml
+screenshot-home.png
+storage/*
+!storage/.gitkeep
+# Dev-/CI-Tooling gehört nicht ins Image (siehe auch .gitattributes)
+.gitattributes
+.github
+vendor
+composer.json
+composer.lock
+psalm.xml
+psalm-baseline.xml
+psalm-bootstrap.php
