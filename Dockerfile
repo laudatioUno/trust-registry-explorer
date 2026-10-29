@@ -30,5 +30,8 @@ RUN chown root:root /var/www/html \
 VOLUME ["/var/www/html/storage"]
 EXPOSE 80
 
+# Prüft nur, ob Apache + PHP antworten, und ruft dafür eine statische Datei ab.
+# index.php wäre ungeeignet: Jeder Check (ohne Session-Cookie) würde einen
+# Abruf bei der Trust Registry auslösen.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD php -r 'exit(@file_get_contents("http://127.0.0.1/index.php") === false ? 1 : 0);'
+    CMD php -r 'exit(@file_get_contents("http://127.0.0.1/assets/theme.css") === false ? 1 : 0);'
