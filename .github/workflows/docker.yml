@@ -1,0 +1,106 @@
+name: Docker smoke test
+
+# Builds the image, starts the compose stack (web + collector) and checks the
+# essentials: the web container becomes healthy, the pages respond, files that
+# must not be served are blocked, the collector writes the History database
+# into the named volume and that data survives a container re-creation.
+#
+# The Trust Registry itself is an external service: the test only requires that
+# the collector writes rows (status "ok" or "error"), so a registry outage does
+# not fail the run.
+on:
+  pull_request:
+    branches: [preview, main]
+    paths:
+      - Dockerfile
+      - docker-compose.yml
+      - .dockerignore
+      - docker/**
+      - '**.php'
+      - assets/**
+      - .github/workflows/docker.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TRE_PORT: '8080'
+  BASE: http://localhost:8080
+
+jobs:
+  smoke:
+    name: Compose up, serve, collect, persist
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build and start the stack
+        run: docker compose up -d --build --wait --wait-timeout 120 web
+
+      - name: Pages respond
+        run: |
+          for path in /index.php /history.php /assets/theme.css; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$path")
+            echo "$path -> $code"
+            [ "$code" = 200 ] || { echo "::error::$path returned $code"; exit 1; }
+          done
+
+      - name: Private files are not served
+        run: |
+          for path in /storage/ /storage/history.sqlite /storage/collect.log /collect.php \
+                      /Dockerfile /docker-compose.yml /docker/apache.conf /.git/config /.gitignore; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$BASE$path")
+            echo "$path -> $code"
+            case "$code" in 403|404) ;; *) echo "::error::$path returned $code (expected 403/404)"; exit 1 ;; esac
+          done
+
+      - name: Collector writes the History database
+        run: |
+          docker compose up -d collector
+          for i in $(seq 1 60); do
+            n=$(docker compose exec -T web php -r '
+              $f = "/var/www/html/storage/history.sqlite";
+              if (!is_file($f)) { echo 0; exit; }
+              try { echo (int) (new PDO("sqlite:$f"))->query("SELECT COUNT(*) FROM snapshots")->fetchColumn(); }
+              catch (Throwable $e) { echo 0; }' 2>/dev/null || echo 0)
+            echo "attempt $i: $n snapshot rows"
+            [ "$n" -gt 0 ] && break
+            sleep 5
+          done
+          [ "$n" -gt 0 ] || { echo "::error::collector wrote no rows"; docker compose logs collector; exit 1; }
+          echo "ROWS_BEFORE=$n" >> "$GITHUB_ENV"
+          docker compose logs collector | grep -q 'Intervall 24 h' \
+            || { echo "::error::expected default interval of 24 h"; exit 1; }
+
+      - name: History survives re-creating the containers
+        run: |
+          docker compose down
+          docker compose up -d --wait --wait-timeout 120 web
+          n=$(docker compose exec -T web php -r \
+            'echo (int) (new PDO("sqlite:/var/www/html/storage/history.sqlite"))->query("SELECT COUNT(*) FROM snapshots")->fetchColumn();')
+          echo "rows before: $ROWS_BEFORE, after: $n"
+          [ "$n" -ge "$ROWS_BEFORE" ] || { echo "::error::History data was lost"; exit 1; }
+          curl -sf "$BASE/history.php" -o /dev/null
+
+      - name: Invalid collector interval falls back to 24 h
+        run: |
+          docker compose stop collector
+          COLLECT_INTERVAL_HOURS=abc docker compose up -d collector
+          sleep 5
+          docker compose logs collector | tail -n 20
+          docker compose logs --since 20s collector | grep -q 'Intervall 24 h' \
+            || { echo "::error::invalid interval did not fall back to 24 h"; exit 1; }
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Clean up
+        if: always()
+        run: docker compose down -v
