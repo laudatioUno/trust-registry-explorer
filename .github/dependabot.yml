@@ -1,5 +1,6 @@
 # Dependabot: weekly update pull requests for the GitHub Actions used in
-# .github/workflows and for the Composer dev dependencies (Psalm).
+# .github/workflows, for the Composer dev dependencies (Psalm) and for the
+# Docker base image (php:8.3-apache).
 # PRs target "preview" (test there first, then promote to main as usual).
 # Nothing is merged automatically.
 version: 2
@@ -18,6 +19,16 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: composer
+    directory: /
+    target-branch: preview
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps"
+
+  - package-ecosystem: docker
     directory: /
     target-branch: preview
     schedule:
