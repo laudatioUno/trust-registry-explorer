@@ -9,7 +9,7 @@ declare(strict_types=1);
  * verhindert, dass ein Code-Update durch einen stehengebliebenen Session-
  * Cache "verschluckt" wird (siehe z.B. das list_meta-Panel bei ncTLS).
  */
-const CACHE_SCHEMA_VERSION = 9;
+const CACHE_SCHEMA_VERSION = 10;
 
 // Paginierte JWT-APIs: Die Registry blättert per Offset über eine nach
 // iat/nbf/exp sortierte Liste, deren Reihenfolge bei Gleichstand nicht stabil
@@ -244,17 +244,39 @@ function extractStatusBit(?string $bytes, ?int $bits, int $idx): ?int
 }
 
 /**
- * Übersetzt einen rohen Statuswert (0/1/2) in das lesbare Label.
- * Unbekannte Werte werden als "<Wert> (Unknown Status)" dargestellt.
+ * Übersetzt einen rohen Statuswert (0/1/2) in das lesbare Label der aktiven
+ * Sprache (Valid/Revoked/Suspended). Unbekannte Werte werden als
+ * "<Wert> (Unknown Status)" dargestellt.
+ *
+ * Wird bewusst erst beim ANZEIGEN aufgerufen und nie im Session-Cache
+ * abgelegt, sonst bliebe das Label nach einem Sprachwechsel in der alten
+ * Sprache stehen. Im Cache liegt nur der Rohwert plus ein sprachneutraler
+ * Marker (siehe statusDisplayLabel).
  */
 function statusLabel(?int $value): string
 {
-    static $labels = [0 => 'VALID', 1 => 'REVOKED', 2 => 'SUSPENDED'];
-
     if ($value === null) {
         return t('status.unavailable');
     }
-    return $labels[$value] ?? ($value . ' (Unknown Status)');
+    return match ($value) {
+        0 => t('status.valid'),
+        1 => t('status.revoked'),
+        2 => t('status.suspended'),
+        default => t('status.unknown_value', [$value]),
+    };
+}
+
+/**
+ * Anzeige-Label für einen gecachten Status: $value ist der Rohwert aus der
+ * Statusliste, $marker der sprachneutrale Marker aus dem Cache ('-' = keine
+ * Statuslisten-Referenz, 'unavailable' = nicht abrufbar, '' = Wert vorhanden).
+ */
+function statusDisplayLabel(?int $value, ?string $marker): string
+{
+    if ($value !== null) {
+        return statusLabel($value);
+    }
+    return $marker === '-' ? '-' : t('status.unavailable');
 }
 
 /**
@@ -272,15 +294,15 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
 
     $fetched = fetchStatusListBytes($uri);
     if ($fetched['error'] !== null) {
-        return ['status' => null, 'label' => t('status.unavailable'), 'error' => $fetched['error']];
+        return ['status' => null, 'label' => 'unavailable', 'error' => $fetched['error']];
     }
 
     $value = extractStatusBit($fetched['bytes'], $fetched['bits'], (int) $idx);
     if ($value === null) {
-        return ['status' => null, 'label' => t('status.unavailable'), 'error' => t('error.status_list_index_oob')];
+        return ['status' => null, 'label' => 'unavailable', 'error' => t('error.status_list_index_oob')];
     }
 
-    return ['status' => $value, 'label' => statusLabel($value), 'error' => null];
+    return ['status' => $value, 'label' => '', 'error' => null];
 }
 
 /**
@@ -292,7 +314,9 @@ function resolveTrustListStatus(?string $uri, mixed $idx): array
  * viele Einträge darauf verweisen — der jeweilige Index wird danach pro
  * Eintrag individuell aus denselben Bytes gelesen.
  *
- * Ergänzt an jedem Eintrag: '_status_value', '_status_label', '_status_error'.
+ * Ergänzt an jedem Eintrag: '_status_value', '_status_error' und '_status_label'
+ * (sprachneutraler Marker, kein Anzeigetext: '-', 'unavailable' oder ''; den
+ * Anzeigetext liefert erst statusDisplayLabel() beim Rendern).
  */
 function attachRowStatuses(array $entries): array
 {
@@ -319,14 +343,14 @@ function attachRowStatuses(array $entries): array
         $cached = $bytesCache[$uri];
         if ($cached['error'] !== null) {
             $entry['_status_value'] = null;
-            $entry['_status_label'] = t('status.unavailable');
+            $entry['_status_label'] = 'unavailable';
             $entry['_status_error'] = $cached['error'];
             continue;
         }
 
         $value = extractStatusBit($cached['bytes'], $cached['bits'], (int) $idx);
         $entry['_status_value'] = $value;
-        $entry['_status_label'] = $value === null ? t('status.unavailable') : statusLabel($value);
+        $entry['_status_label'] = $value === null ? 'unavailable' : '';
         $entry['_status_error'] = $value === null ? t('error.status_list_index_oob') : null;
     }
     unset($entry);
@@ -918,7 +942,7 @@ function formatStatusBadgeCell(array $entry): string
     }
 
     $value = $entry['_status_value'] ?? null;
-    $label = $entry['_status_label'] ?? '-';
+    $label = statusDisplayLabel($value, $entry['_status_label'] ?? '-');
 
     if ($label === '-') {
         return '-';
@@ -1382,7 +1406,7 @@ function getSortValue(array $entry, array $col): int|float|string
             return mb_strtolower((string) (reset($vals) ?: ''));
         })(),
         'registry_ids' => mb_strtolower(strip_tags(formatRegistryIdsCell(getPath($entry, $col['key'])))),
-        'status_badge' => mb_strtolower((string) ($entry['_status_label'] ?? '')),
+        'status_badge' => mb_strtolower(statusDisplayLabel(isset($entry['_status_value']) ? (int) $entry['_status_value'] : null, $entry['_status_label'] ?? '-')),
         'validity_badge' => mb_strtolower(computeValidity($entry['nbf'] ?? null, $entry['exp'] ?? null)['label']),
         'vct_values' => mb_strtolower(strip_tags(formatVctValuesCell($entry))),
         'can_issue' => mb_strtolower(strip_tags(formatCanIssueCell($entry))),
