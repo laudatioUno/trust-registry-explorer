@@ -108,25 +108,21 @@ function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPag
     return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage, 'status' => $statusFilter]);
 }
 
-/**
+/*
  * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
- * (clientseitig aus nbf/exp berechnet) — einheitlich an jeder Stelle
- * verwendet, an der diese Begriffe auftauchen (Spaltenköpfe + list_meta-Panel),
- * damit die Formulierung nicht pro API separat gepflegt werden muss.
+ * (clientseitig aus nbf/exp berechnet): lang.php, Keys info.status und
+ * info.validity — einheitlich an jeder Stelle verwendet, an der diese
+ * Begriffe auftauchen (Spaltenköpfe + list_meta-Panel).
  */
-const INFO_TEXTS = [
-    'status'   => 'Status from status list.',
-    'validity' => 'Computed with nbf (not before) and exp (expired) in payload',
-];
 
 /**
  * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
  * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
- * oder 'validity' (siehe INFO_TEXTS).
+ * oder 'validity' (Texte: lang.php, info.*).
  */
 function renderInfoIcon(string $key, bool $mobileOnly = false): string
 {
-    $text = INFO_TEXTS[$key] ?? '';
+    $text = in_array($key, ['status', 'validity'], true) ? t('info.' . $key) : '';
     if ($text === '') {
         return '';
     }
@@ -709,7 +705,7 @@ if ($showPagination) {
                 <input type="text" name="q" title="<?= htmlspecialchars(t('toolbar.search_syntax')) ?>" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
                 <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
             </form>
-            <a class="toolbar-btn refresh-btn" title="Cached for <?= $cacheMinutes ?> minute<?= $cacheMinutes === 1 ? '' : 's' ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>">Refresh</a>
+            <a class="toolbar-btn refresh-btn" title="<?= htmlspecialchars(t($cacheMinutes === 1 ? 'toolbar.refresh_title_one' : 'toolbar.refresh_title_other', [$cacheMinutes])) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.refresh')) ?></a>
             <?php if ($errorMessage === null && $apiKey !== null): ?>
                 <a class="toolbar-btn spec-btn" title="<?= htmlspecialchars(t('toolbar.export_csv_title')) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['export' => 'csv', 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.export_csv')) ?></a>
             <?php endif; ?>
@@ -746,7 +742,7 @@ if ($showPagination) {
                         };
                     ?>
                     <span class="val">
-                        <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars($listMeta['status_label']) ?></span>
+                        <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(statusDisplayLabel($listMeta['status_value'], $listMeta['status_label'])) ?></span>
                     </span>
                 </div>
                 <div class="list-meta-tile">
