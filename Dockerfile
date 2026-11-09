@@ -6,7 +6,7 @@
 #
 # Das offizielle PHP-Image bringt curl, session, mbstring und pdo_sqlite
 # bereits mit — es muss nichts nachinstalliert werden.
-FROM php:8.3-apache
+FROM php:8.5-apache
 
 # Zeitzone passend zu den Europe/Zurich-Formatierungen in functions.php,
 # damit auch date() im Collector-Log lokale Zeit schreibt.
