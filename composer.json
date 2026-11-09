@@ -7,7 +7,7 @@
         "php": ">=8.3"
     },
     "require-dev": {
-        "vimeo/psalm": "^6.0"
+        "vimeo/psalm": "^7.0"
     },
     "config": {
         "sort-packages": true,
