@@ -136,90 +136,139 @@ function renderInfoIcon(string $key, bool $mobileOnly = false): string
         . '</span>';
 }
 
-$errorMessage = null;
-$hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
-$statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
-$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
-$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
-$entries = [];
-$fetchedCount = 0;
-$listMeta = null;
+/**
+ * Holt die Einträge der gewählten API (Session-Cache, sonst Registry), wendet
+ * Status-Filter, Textsuche und Sortierung an und schneidet die aktuelle Seite
+ * aus. Liegt als Funktion vor, damit die Seite die (u.U. langsame) Abfrage
+ * erst NACH dem ersten Flush des Seitenrahmens ausführen kann (Skeleton, siehe
+ * unten): Tabs und Toolbar erscheinen sofort, die Tabelle folgt.
+ *
+ * @return array{
+ *     errorMessage: string|null, fetchedCount: int, hasStatusFilter: bool, statusCounts: array<string, int>|null,
+ *     entries: list<array>, listMeta: array|null, pageSize: int, totalFiltered: int,
+ *     showPagination: bool, totalPages: int, page: int, pageEntries: list<array>
+ * }
+ */
+function loadExplorerData(array $config, string $envKey, ?string $apiKey, string $query, bool $forceRefresh, string $statusFilter, ?string $sortKey, string $sortDir, int $page, int $perPage): array
+{
+    $errorMessage = null;
+    $hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
+    $statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
+    $entries = [];
+    $fetchedCount = 0;          // alle Einträge der API (vor Filter/Suche)
+    $listMeta = null;
 
-if ($apiKey !== null) {
-    $apiCfg = $config['apis'][$apiKey];
-    $baseUrl = $config['environments'][$envKey]['base_url'];
+    if ($apiKey !== null) {
+        $apiCfg = $config['apis'][$apiKey];
+        $baseUrl = $config['environments'][$envKey]['base_url'];
 
-    try {
-        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
-        $entries = $fetched['entries'];
-        $listMeta = $fetched['list_meta'];
-        $fetchedCount = count($entries);
+        try {
+            $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
+            $entries = $fetched['entries'];
+            $listMeta = $fetched['list_meta'];
+            $fetchedCount = count($entries);
 
-        // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
-        // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
-        // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
-        if (!empty($apiCfg['row_status'])) {
-            $hasStatusFilter = true;
-            $statusCounts = statusBucketCounts($entries);
-            if ($statusFilter === 'valid') {
-                $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
-            }
-        }
-
-        $entries = filterEntries($entries, $query);
-
-        if ($sortKey !== null) {
-            $sortCol = null;
-            foreach ($apiCfg['columns'] as $c) {
-                if ($c['key'] === $sortKey) {
-                    $sortCol = $c;
-                    break;
+            // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
+            // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
+            // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
+            if (!empty($apiCfg['row_status'])) {
+                $hasStatusFilter = true;
+                $statusCounts = statusBucketCounts($entries);
+                if ($statusFilter === 'valid') {
+                    $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
                 }
             }
-            if ($sortCol !== null) {
-                $entries = sortEntries($entries, $sortCol, $sortDir);
+
+            $entries = filterEntries($entries, $query);
+
+            if ($sortKey !== null) {
+                $sortCol = null;
+                foreach ($apiCfg['columns'] as $c) {
+                    if ($c['key'] === $sortKey) {
+                        $sortCol = $c;
+                        break;
+                    }
+                }
+                if ($sortCol !== null) {
+                    $entries = sortEntries($entries, $sortCol, $sortDir);
+                }
             }
+        } catch (Throwable $e) {
+            $errorMessage = $e->getMessage();
         }
-    } catch (Throwable $e) {
-        $errorMessage = $e->getMessage();
+    }
+
+    $pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
+    $totalFiltered = count($entries);
+    $showPagination = $totalFiltered > $pageSize;
+
+    if ($showPagination) {
+        $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
+        $page = min($page, $totalPages - 1);
+        $pageEntries = array_slice($entries, $page * $perPage, $perPage);
+    } else {
+        $totalPages = 1;
+        $page = 0;
+        $pageEntries = $entries; // alles auf einer Seite
+    }
+
+    return [
+        'errorMessage' => $errorMessage, 'fetchedCount' => $fetchedCount, 'hasStatusFilter' => $hasStatusFilter, 'statusCounts' => $statusCounts,
+        'entries' => $entries, 'listMeta' => $listMeta, 'pageSize' => $pageSize, 'totalFiltered' => $totalFiltered,
+        'showPagination' => $showPagination, 'totalPages' => $totalPages, 'page' => $page, 'pageEntries' => $pageEntries,
+    ];
+}
+
+$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
+$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
+$apiCfg = $apiKey !== null ? $config['apis'][$apiKey] : [];
+
+// Streaming: Ist die Tabelle nicht im Session-Cache (erster Aufruf, abgelaufen
+// oder Refresh), wird der Seitenrahmen mit Skeleton SOFORT ausgeliefert und die
+// langsame Registry-Abfrage läuft erst danach (siehe unten, vor dem
+// Ergebnisbereich). Ausgenommen: CSV-Export (braucht die Daten vor dem ersten
+// Byte) und die DID-Suche (ihr Ergebnis steht im Seitenrahmen oberhalb der Tabs).
+// Die Session muss vor der ersten Ausgabe gestartet werden, sonst lässt sich ihr
+// Cookie nicht mehr senden und der Cache würde nie greifen.
+$wantsCsv = ($_GET['export'] ?? '') === 'csv';
+$stream = $apiKey !== null && !$wantsCsv && $didQuery === ''
+    && ($forceRefresh || !entriesCacheIsFresh($envKey, $apiKey, $config['cache_ttl']));
+
+$data = null;
+if (!$stream) {
+    $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
+    if ($wantsCsv && $apiKey !== null && $data['errorMessage'] === null) {
+        $entries = $data['entries'];
+        $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store');
+
+        $out = fopen('php://output', 'wb');
+        fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
+        $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
+        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
+        foreach ($entries as $entry) {
+            fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
+        }
+        fclose($out);
+        exit;
     }
 }
 
-// CSV-Export der Tabelle genau so, wie sie angezeigt wird: alle Zeilen, die
-// Suche, Status-Filter und Sortierung durchlaufen haben (nicht nur die aktuelle
-// Seite), mit denselben Spalten wie die Tabelle in Klartext. Die Spalte
-// "Base Registry" (per AJAX nachgeladen) ist bewusst nicht enthalten.
-if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
-    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('X-Content-Type-Options: nosniff');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: no-store');
-
-    $out = fopen('php://output', 'wb');
-    fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
-    $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
-    fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
-    foreach ($entries as $entry) {
-        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
-    }
-    fclose($out);
-    exit;
+if ($stream) {
+    header('X-Accel-Buffering: no'); // nginx: Antwort nicht puffern
+    // Datenfelder bis zum Nachladen leer: der Seitenrahmen (Tabs, Chips) braucht sie nicht.
+    $data = ['errorMessage' => null, 'fetchedCount' => 0, 'hasStatusFilter' => false, 'statusCounts' => null, 'entries' => [], 'listMeta' => null,
+             'pageSize' => $config['page_size'], 'totalFiltered' => 0, 'showPagination' => false, 'totalPages' => 1,
+             'page' => 0, 'pageEntries' => []];
 }
-
-$pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
-$totalFiltered = count($entries);
-$showPagination = $totalFiltered > $pageSize;
-
-if ($showPagination) {
-    $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
-    $page = min($page, $totalPages - 1);
-    $pageEntries = array_slice($entries, $page * $perPage, $perPage);
-} else {
-    $totalPages = 1;
-    $page = 0;
-    $pageEntries = $entries; // alles auf einer Seite
-}
+[
+    'errorMessage' => $errorMessage, 'fetchedCount' => $fetchedCount, 'hasStatusFilter' => $hasStatusFilter, 'statusCounts' => $statusCounts,
+    'entries' => $entries, 'listMeta' => $listMeta, 'pageSize' => $pageSize, 'totalFiltered' => $totalFiltered,
+    'showPagination' => $showPagination, 'totalPages' => $totalPages, 'page' => $page, 'pageEntries' => $pageEntries,
+] = $data;
 
 ?>
 <!DOCTYPE html>
@@ -680,6 +729,23 @@ if ($showPagination) {
     </svg>
     <span><?= htmlspecialchars(t('common.loading')) ?></span>
 </div>
+
+<?php if ($stream): ?>
+    <?= renderResultSkeleton($apiCfg, 10, !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url'])) ?>
+    <?php
+    // Seitenrahmen + Skeleton sind jetzt beim Browser; erst danach die langsame Abfrage.
+    streamGuard(true);
+    flushOutput();
+    $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
+    streamGuard(false);
+    [
+        'errorMessage' => $errorMessage, 'fetchedCount' => $fetchedCount, 'hasStatusFilter' => $hasStatusFilter, 'statusCounts' => $statusCounts,
+        'entries' => $entries, 'listMeta' => $listMeta, 'pageSize' => $pageSize, 'totalFiltered' => $totalFiltered,
+        'showPagination' => $showPagination, 'totalPages' => $totalPages, 'page' => $page, 'pageEntries' => $pageEntries,
+    ] = $data;
+    ?>
+    <style>#treSkeleton { display: none; }</style>
+<?php endif; ?>
 
 <?php if ($apiKey === null): ?>
 
