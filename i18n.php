@@ -28,7 +28,9 @@ function i18nDetectLanguage(): string
         $params = $_GET;
         unset($params['lang']);
         $query = http_build_query($params);
-        $self = $_SERVER['PHP_SELF'] ?? '';
+        // SCRIPT_NAME statt PHP_SELF: PHP_SELF enthält auch einen vom Client
+        // angehängten Pfadteil (/index.php/beliebig).
+        $self = $_SERVER['SCRIPT_NAME'] ?? '';
         header('Location: ' . $self . ($query !== '' ? '?' . $query : ''));
         exit;
     }
@@ -75,6 +77,11 @@ function i18nDict(): array
  * Key dort fehlt, und auf den Key selbst, wenn er nirgends existiert (macht
  * einen fehlenden Eintrag sofort sichtbar statt ihn stillschweigend zu
  * verschlucken). $vars füllt sprintf-Platzhalter (%s, %d) im Text.
+ *
+ * @psalm-taint-specialize  Taint-Analyse pro Aufrufstelle statt global: Ohne
+ * das Flag färbt ein einziger Aufruf mit nicht vertrauenswürdigem Argument
+ * (history.php: Exception-Text, dort per htmlspecialchars() ausgegeben) die
+ * Rückgabe von t() an JEDER Stelle als "tainted" ein.
  */
 function t(string $key, array $vars = []): string
 {
