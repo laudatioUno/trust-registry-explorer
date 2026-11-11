@@ -231,8 +231,11 @@ $apiCfg = $apiKey !== null ? $config['apis'][$apiKey] : [];
 // Die Session muss vor der ersten Ausgabe gestartet werden, sonst lässt sich ihr
 // Cookie nicht mehr senden und der Cache würde nie greifen.
 $wantsCsv = ($_GET['export'] ?? '') === 'csv';
-$stream = $apiKey !== null && !$wantsCsv && $didQuery === ''
-    && ($forceRefresh || !entriesCacheIsFresh($envKey, $apiKey, $config['cache_ttl']));
+// entriesCacheIsFresh() IMMER aufrufen (nicht per ||-Kurzschluss überspringen):
+// bei Refresh muss die Session trotzdem vor der ersten Ausgabe starten.
+$cacheTtl   = is_int($config['cache_ttl']) ? $config['cache_ttl'] : 300;
+$cacheFresh = $apiKey !== null && entriesCacheIsFresh((string) $envKey, $apiKey, $cacheTtl);
+$stream = $apiKey !== null && !$wantsCsv && $didQuery === '' && ($forceRefresh || !$cacheFresh);
 
 $data = null;
 if (!$stream) {
