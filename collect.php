@@ -57,7 +57,13 @@ $logPath = __DIR__ . '/storage/collect.log';
 function logLine(string $logPath, string $line): void
 {
     $stamped = '[' . date('Y-m-d H:i:s') . '] ' . $line;
-    echo $stamped . "\n";
+    // Reine CLI-Ausgabe (siehe Abbruch oben bei Webserver-Aufruf), kein HTML.
+    /**
+     * @psalm-taint-escape html
+     * @psalm-taint-escape has_quotes
+     */
+    $stdoutLine = $stamped . "\n";
+    echo $stdoutLine;
 
     $dir = dirname($logPath);
     if (!is_dir($dir)) {

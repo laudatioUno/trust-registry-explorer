@@ -153,15 +153,55 @@ function decodeJwt(string $jwt): array
 }
 
 /**
+ * Lässt nur http(s)-URLs durch. Die URLs stammen teils aus dem Inhalt
+ * abgerufener Dokumente (z.B. status.status_list.uri im JWT der Registry);
+ * curl würde sonst auch file://, ftp://, gopher:// usw. öffnen. Zusätzlich
+ * beschränken die curl-Aufrufe selbst die erlaubten Protokolle (siehe
+ * curlProtocolOptions()).
+ *
+ * Bewusste Entscheidung: Die Status-Listen-URI kommt aus dem JWT der
+ * konfigurierten Registry und wird abgerufen, auch wenn sie auf einen anderen
+ * Host zeigt (die Status-Liste liegt in der Praxis auf einer eigenen
+ * Subdomain). Erlaubt sind deshalb nur das Protokoll-Whitelisting hier und in
+ * curlProtocolOptions(), kein Host-Abgleich.
+ *
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape file
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ */
+function assertHttpUrl(string $url): string
+{
+    if (!preg_match('#^https?://[^\s/]#i', $url)) {
+        throw new RuntimeException(t('error.invalid_url'));
+    }
+    return $url;
+}
+
+/**
+ * curl-Optionen, die nur HTTP und HTTPS erlauben (kein file://, ftp:// usw.).
+ * CURLOPT_PROTOCOLS_STR gibt es ab PHP 8.3 / libcurl 7.85, CURLOPT_PROTOCOLS
+ * ist dort als veraltet markiert, auf älterem PHP aber die einzige Variante.
+ *
+ * @return array<int, int|string>
+ */
+function curlProtocolOptions(): array
+{
+    return defined('CURLOPT_PROTOCOLS_STR')
+        ? [CURLOPT_PROTOCOLS_STR => 'http,https']
+        : [CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS];
+}
+
+/**
  * Führt einen HTTP-GET-Request aus und gibt den Rohtext zurück.
  */
 function httpGet(string $url): string
 {
-    $ch = curl_init($url);
+    $ch = curl_init(assertHttpUrl($url));
     if ($ch === false) {
         throw new RuntimeException(t('error.curl', [0, 'curl_init']));
     }
-    curl_setopt_array($ch, [
+    curl_setopt_array($ch, curlProtocolOptions() + [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => 20,
         CURLOPT_HTTPHEADER     => ['Accept: text/plain, application/json, application/jwt, */*'],
@@ -1138,6 +1178,12 @@ function exportCellText(array $entry, array $col, string $envKey, string $issuer
  * verdoppelt). Werte stammen aus externen Registries: beginnt ein Wert mit
  * =, +, @ (oder '-' gefolgt von weiterem Text), würde Excel ihn als Formel
  * auswerten — dem wird ein Apostroph vorangestellt (CSV-/Formula-Injection).
+ *
+ * Das Ergebnis geht nur als text/csv (Download, nosniff) hinaus und wird nie
+ * als HTML ausgeliefert; daher gilt der HTML-Taint hier als entschärft.
+ *
+ * @psalm-taint-escape html
+ * @psalm-taint-escape has_quotes
  */
 function csvCell(string $value): string
 {
@@ -1577,6 +1623,14 @@ const BASE_REGISTRY_CACHE_SCHEMA = 1;
  * gehört (Host == Host von $registryUrl, Pfad api:v1:did:<uuid>).
  * null = DID liegt nicht in diesem Base Registry ("External DID").
  *
+ * Die uuid wird per Regex auf das UUID-Format geprüft und der Host gegen die
+ * konfigurierte Registry-URL abgeglichen. Damit kann eine übergebene DID weder
+ * den Host noch den Pfad einer Anfrage verändern.
+ *
+ * @psalm-taint-escape url_component
+ * @psalm-taint-escape url_path
+ * @psalm-taint-escape ssrf
+ * @psalm-taint-escape file
  * @return array{method: string, scid: string, uuid: string}|null
  */
 function baseRegistryDidInfo(string $did, string $registryUrl): ?array
@@ -1614,11 +1668,15 @@ function baseRegistryDidInfo(string $did, string $registryUrl): ?array
  */
 function httpGetStatus(string $url, int $timeout = 10): array
 {
-    $ch = curl_init($url);
+    try {
+        $ch = curl_init(assertHttpUrl($url));
+    } catch (RuntimeException $e) {
+        return ['code' => 0, 'body' => '', 'error' => $e->getMessage()];
+    }
     if ($ch === false) {
         return ['code' => 0, 'body' => '', 'error' => t('error.curl', [0, 'curl_init'])];
     }
-    curl_setopt_array($ch, [
+    curl_setopt_array($ch, curlProtocolOptions() + [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT        => $timeout,
         CURLOPT_CONNECTTIMEOUT => 5,

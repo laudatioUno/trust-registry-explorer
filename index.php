@@ -192,6 +192,7 @@ if ($apiKey !== null) {
 if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
     $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
     header('Content-Type: text/csv; charset=UTF-8');
+    header('X-Content-Type-Options: nosniff');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Cache-Control: no-store');
 
