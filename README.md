@@ -25,6 +25,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Docker support** — `docker compose up -d` runs the Explorer (Apache + PHP) and the History collector in containers, nothing to install on the host except Docker; History data lives in a named volume and survives restarts and image updates
 - **Preview marker** — an optional `storage/.preview` file switches a deployment into "preview look" (badge, greyed-out favicon and header logo, `[Preview]` tab title, `noindex`); see *Marking a preview instance*. The logo/title in the header is a link back to the home page
 - **Loading spinner** — the logo doubles as a subtle animated indicator (bars pulse, seal pops) shown over the table/chart while a page reload is in flight, e.g. switching to an API with 1'500+ entries (vqPS)
+- **Skeleton loading** — when a table is not yet in the session cache, the page frame (tabs, toolbar) and a skeleton of the result (real column headers, shimmering placeholder rows; with the metadata tiles on the trust lists) are sent immediately, and the data follows as soon as the registry has answered. No JavaScript needed; the skeleton disappears once the real content arrives. Needs a web server that does not buffer PHP output; on a buffering host the page just shows up all at once, as before
 
 ## Screenshot
 

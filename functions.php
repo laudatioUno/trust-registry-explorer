@@ -1488,6 +1488,31 @@ function sortEntries(array $entries, array $col, string $dir): array
 }
 
 /**
+ * Gilt ein Session-Cache-Eintrag als veraltet? (fehlt, andere Schema-Version
+ * oder älter als $ttl Sekunden)
+ */
+function isEntriesCacheStale(?array $cached, int $ttl): bool
+{
+    return $cached === null
+        || ($cached['schema'] ?? null) !== CACHE_SCHEMA_VERSION
+        || (time() - $cached['fetched_at']) > $ttl;
+}
+
+/**
+ * Liegt die Tabelle für Umgebung+API frisch im Session-Cache? Dann braucht die
+ * Seite keine Registry-Abfrage und kann ohne Skeleton in einem Zug ausgeliefert
+ * werden. Startet die Session (muss vor der ersten Ausgabe passieren).
+ */
+function entriesCacheIsFresh(string $envKey, string $apiKey, int $ttl): bool
+{
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        session_start();
+    }
+    $cached = $_SESSION['trust_explorer_cache'][$envKey . '::' . $apiKey] ?? null;
+    return !isEntriesCacheStale(is_array($cached) ? $cached : null, $ttl);
+}
+
+/**
  * Holt die Einträge (+ ggf. list_meta) für Umgebung+API, nutzt einen
  * Session-Cache und erzwingt bei $forceRefresh einen frischen API-Abruf.
  *
@@ -1508,9 +1533,7 @@ function getEntriesCached(string $envKey, string $apiKey, string $baseUrl, array
     // von vor einer Struktur-Änderung (z.B. neues Feld list_meta/_entity_name)
     // und gilt automatisch als veraltet — verhindert, dass ein Code-Update
     // durch einen stehengebliebenen Session-Cache "verschluckt" wird.
-    $isStale = $cached === null
-        || ($cached['schema'] ?? null) !== CACHE_SCHEMA_VERSION
-        || (time() - $cached['fetched_at']) > $ttl;
+    $isStale = isEntriesCacheStale($cached, $ttl);
 
     if ($forceRefresh || $isStale) {
         $result = fetchAllEntries($envKey, $baseUrl, $apiCfg, $allApis, $ttl);
@@ -2298,4 +2321,115 @@ function renderTourAssets(): string
     return '<script type="application/json" id="tour-data">' . $json . "</script>\n"
         . '<link rel="stylesheet" href="' . htmlspecialchars(assetUrl('tour.css')) . "\">\n"
         . '<script src="' . htmlspecialchars(assetUrl('tour.js')) . "\"></script>\n";
+}
+
+
+/**
+ * Schickt alles bisher Ausgegebene sofort an den Browser (Streaming des
+ * Seitenrahmens, bevor die langsame Registry-Abfrage läuft).
+ */
+function flushOutput(): void
+{
+    while (ob_get_level() > 0) {
+        @ob_end_flush();
+    }
+    flush();
+}
+
+/**
+ * Merker "Seite wird gerade gestreamt und ist noch nicht fertig". Bricht PHP
+ * mittendrin hart ab (Fatal Error, Timeout), würde das Skeleton sonst für immer
+ * stehen bleiben: der Shutdown-Handler blendet es dann aus und zeigt einen Fehler.
+ */
+function streamGuard(?bool $open = null): bool
+{
+    static $isOpen = false;
+    static $registered = false;
+    if ($open !== null) {
+        $isOpen = $open;
+        if ($open && !$registered) {
+            $registered = true;
+            register_shutdown_function(static function (): void {
+                if (streamGuard()) {
+                    echo '<style>#treSkeleton { display: none; }</style><div class="error">'
+                        . htmlspecialchars(t('explorer.fetch_error', [t('error.stream_aborted')])) . '</div>';
+                }
+            });
+        }
+    }
+    return $isOpen;
+}
+
+/**
+ * Skeleton für den Ergebnisbereich, bis die Tabelle da ist. Nutzt dieselben
+ * Klassen wie die echte Ausgabe (list-meta-*, table, entry-row mit data-label),
+ * damit Abstände und die Mobile-Kartenansicht übereinstimmen und beim Austausch
+ * nichts springt. Die Spaltenköpfe sind schon aus der Konfiguration bekannt.
+ * Wird durch '#treSkeleton { display: none }' ausgeblendet, sobald der echte
+ * Inhalt folgt.
+ */
+function renderResultSkeleton(array $apiCfg, int $rows = 10, bool $hasBaseCol = false): string
+{
+    $bar = static fn (string $cls): string => '<span class="tre-skel-bar ' . $cls . '"></span>';
+    $h = static fn (string $s): string => htmlspecialchars($s);
+
+    $html = '<div id="treSkeleton" class="tre-skel" role="status" aria-live="polite" aria-busy="true">'
+        . '<span class="sr-only">' . $h(t('common.loading')) . '</span>';
+
+    // Toolbar: URL, Suche, Buttons
+    $html .= '<div class="toolbar tre-skel-toolbar" aria-hidden="true">' . $bar('w-xl')
+        . '<div class="toolbar-actions">' . $bar('w-l tall') . $bar('w-s tall') . $bar('w-s tall') . '</div></div>';
+
+    // Trust-List-APIs: Kachelpanel mit nbf/exp/iat/Status
+    if (!empty($apiCfg['list_meta'])) {
+        $tiles = '';
+        foreach (['listmeta.valid_from', 'listmeta.valid_until', 'listmeta.created_at', 'common.status'] as $i => $key) {
+            $tiles .= '<div class="list-meta-tile"><span class="lbl">' . $h(t($key)) . '</span><span class="val">'
+                . ($i === 3 ? $bar('pill') : $bar('w-m')) . '</span></div>';
+        }
+        $html .= '<div class="list-meta-panel" aria-hidden="true">' . $bar('w-xl small')
+            . '<div class="list-meta-grid">' . $tiles . '</div></div>';
+    }
+
+    // Status-Umschalter (APIs mit Status pro Zeile)
+    if (!empty($apiCfg['row_status'])) {
+        $html .= '<div class="status-filter tre-skel-filter" aria-hidden="true">' . $bar('w-xs') . $bar('w-m tall') . '</div>';
+    }
+
+    // Tabelle: echte Spaltenköpfe, Platzhalterzeilen
+    $columns = $apiCfg['columns'] ?? [];
+    $widths = ['w-l', 'w-m', 'w-xl', 'w-s', 'w-m'];
+    $html .= '<table class="tre-skel-table" aria-hidden="true"><thead><tr>';
+    foreach ($columns as $col) {
+        $html .= '<th>' . $h((string) $col['label']) . '</th>';
+    }
+    if ($hasBaseCol) {
+        $html .= '<th>' . $h(t('base.title')) . '</th>';
+    }
+    $html .= '</tr></thead><tbody>';
+    for ($r = 0; $r < $rows; $r++) {
+        $html .= '<tr class="entry-row">';
+        foreach ($columns as $c => $col) {
+            $type = (string) ($col['type'] ?? 'text');
+            if ($type === 'status_badge' || $type === 'validity_badge') {
+                $cell = $bar('pill');
+            } elseif ($type === 'unix' || $type === 'iso') {
+                $cell = $bar('w-m');
+            } elseif ($type === 'issuer_count') {
+                $cell = $bar('w-xs');
+            } elseif (str_contains((string) ($col['class'] ?? ''), 'cell-did')) {
+                $cell = $bar('w-xl');
+            } else {
+                $cell = $bar($widths[($r + $c) % count($widths)]);
+            }
+            $html .= '<td data-label="' . $h((string) $col['label']) . '">' . $cell . '</td>';
+        }
+        if ($hasBaseCol) {
+            $html .= '<td data-label="' . $h(t('base.title')) . '">' . $bar('pill') . '</td>';
+        }
+        $html .= '</tr>';
+    }
+    $html .= '</tbody></table></div>';
+
+    return $html;
 }
