@@ -2328,8 +2328,15 @@ function renderTourAssets(): string
  * Schickt alles bisher Ausgegebene sofort an den Browser (Streaming des
  * Seitenrahmens, bevor die langsame Registry-Abfrage läuft).
  */
-function flushOutput(): void
+function flushOutput(bool $pad = false): void
 {
+    if ($pad) {
+        // Manche Server-Schichten (FastCGI/Apache/Proxy) reichen eine Antwort erst
+        // weiter, wenn ein interner Puffer voll ist, und halten sonst den Rest
+        // zurück (hier: die Skeleton-Balken). Ein HTML-Kommentar als Polster
+        // schiebt den relevanten Teil über diese Schwelle; er ist unsichtbar.
+        echo '<!--' . str_repeat(' ', 16384) . "-->\n";
+    }
     while (ob_get_level() > 0) {
         @ob_end_flush();
     }
