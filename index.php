@@ -233,7 +233,8 @@ $apiCfg = $apiKey !== null ? $config['apis'][$apiKey] : [];
 $wantsCsv = ($_GET['export'] ?? '') === 'csv';
 // entriesCacheIsFresh() IMMER aufrufen (nicht per ||-Kurzschluss überspringen):
 // bei Refresh muss die Session trotzdem vor der ersten Ausgabe starten.
-$cacheFresh = $apiKey !== null && entriesCacheIsFresh($envKey, $apiKey, $config['cache_ttl']);
+$cacheTtl   = is_int($config['cache_ttl']) ? $config['cache_ttl'] : 300;
+$cacheFresh = $apiKey !== null && entriesCacheIsFresh((string) $envKey, $apiKey, $cacheTtl);
 $stream = $apiKey !== null && !$wantsCsv && $didQuery === '' && ($forceRefresh || !$cacheFresh);
 
 $data = null;
