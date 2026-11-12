@@ -738,7 +738,7 @@ if ($stream) {
     <?php
     // Seitenrahmen + Skeleton sind jetzt beim Browser; erst danach die langsame Abfrage.
     streamGuard(true);
-    flushOutput();
+    flushOutput(true);
     $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
     streamGuard(false);
     [
