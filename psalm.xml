@@ -27,5 +27,6 @@
         <file name="config.php"/>
         <file name="lang.php"/>
         <file name="ui_extras.php"/>
+        <file name="result_view.php"/>
     </projectFiles>
 </psalm>

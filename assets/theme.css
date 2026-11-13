@@ -229,3 +229,34 @@
     border-color: var(--accent); background: var(--accent-soft); color: var(--accent);
 }
 .top-nav a.tour-help:hover { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
+
+/* ---- Skeleton-Platzhalter (Ergebnisbereich, bis die Registry-Daten da sind) ----
+ * Steht in #treResult und wird von assets/result-loader.js durch den per fetch()
+ * geholten Ergebnisbereich ersetzt. Nutzt dieselben Klassen wie die echte
+ * Ausgabe (toolbar, list-meta-*, table, entry-row), damit Abstände und die
+ * Mobile-Kartenansicht passen. */
+.tre-skel { --skel-base: color-mix(in srgb, var(--text) 8%, var(--surface)); --skel-hi: color-mix(in srgb, var(--text) 16%, var(--surface)); }
+.tre-skel-bar {
+    display: inline-block; vertical-align: middle;
+    height: 0.9em; min-width: 2em; max-width: 100%;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--skel-base) 25%, var(--skel-hi) 50%, var(--skel-base) 75%);
+    background-size: 200% 100%;
+    animation: tre-skel-shimmer 1.4s ease-in-out infinite;
+}
+.tre-skel-bar.w-xs { width: 2.5em; }
+.tre-skel-bar.w-s  { width: 5em; }
+.tre-skel-bar.w-m  { width: 8em; }
+.tre-skel-bar.w-l  { width: 12em; }
+.tre-skel-bar.w-xl { width: 70%; }
+.tre-skel-bar.tall { height: 1.9em; border-radius: 6px; }
+.tre-skel-bar.small { height: 0.7em; margin-bottom: 4px; }
+.tre-skel-bar.pill { width: 4.5em; height: 1.4em; border-radius: 999px; }
+.tre-skel-toolbar .tre-skel-bar.w-xl { max-width: 360px; }
+.tre-skel-filter { display: flex; align-items: center; gap: 12px; }
+.tre-skel-table th { color: var(--text-2); }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@keyframes tre-skel-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .tre-skel-bar { animation: none; }
+}

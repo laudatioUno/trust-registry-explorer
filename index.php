@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require __DIR__ . '/i18n.php';
 require __DIR__ . '/functions.php';
+require __DIR__ . '/result_view.php';
 $config = require __DIR__ . '/config.php';
 
 // ---- Parameter aus der URL lesen ----
@@ -12,8 +13,9 @@ $config = require __DIR__ . '/config.php';
 // Schlüssel (und für die statische Analyse nicht mehr "tainted").
 $requestedEnv = requestString($_GET, 'env');
 $requestedApi = requestString($_GET, 'api');
-$envKey = array_key_first($config['environments']);
-foreach ($config['environments'] as $knownEnv => $_) {
+$environments = is_array($config['environments']) ? $config['environments'] : [];
+$envKey = (string) array_key_first($environments);
+foreach ($environments as $knownEnv => $_) {
     if ((string) $knownEnv === $requestedEnv) {
         $envKey = (string) $knownEnv;
         break;
@@ -36,9 +38,10 @@ $forceRefresh = isset($_GET['refresh']);
 // diesen Wert nicht explizit mitgibt (z.B. Umgebungs-/API-Wechsel), auf den
 // Standardwert aus config.php zurück — kein dauerhaftes Merken gewünscht.
 $pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
+$defaultPerPage = is_int($config['page_size']) ? $config['page_size'] : 20;
 $perPage = requestInt($_GET, 'per_page', (int) $config['page_size']);
 if (!in_array($perPage, $pageSizeOptions, true)) {
-    $perPage = $config['page_size'];
+    $perPage = $defaultPerPage;
 }
 
 // Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
@@ -50,7 +53,7 @@ $sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 // ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
 
 $didQuery = trim(requestString($_GET, 'did'));
-$didEnv   = requestString($_GET, 'did_env', (string) $envKey);
+$didEnv   = requestString($_GET, 'did_env', $envKey);
 if (!isset($config['environments'][$didEnv])) {
     $didEnv = $envKey;
 }
@@ -77,148 +80,145 @@ if ($didQuery !== '') {
 }
 
 /**
- * Baut eine URL zu dieser Seite mit den aktuellen Parametern, überschrieben
- * durch $overrides. Damit bleiben Umgebung/API/Suche beim Navigieren erhalten.
- * per_page wird NUR übernommen, wenn es explizit in $overrides steht (z.B. für
- * die Pagination-Links) — beim Umgebungs-/API-Wechsel via Tabs/Chips fällt die
- * Seitengrösse absichtlich auf den Standardwert zurück.
+ * Holt die Einträge der gewählten API (Session-Cache, sonst Registry), wendet
+ * Status-Filter, Textsuche und Sortierung an und schneidet die aktuelle Seite
+ * aus. Liegt als Funktion vor, weil die Abfrage je nach Fall direkt (Seite) oder
+ * erst im Fragment-Request (?fragment=1, siehe result-loader.js) läuft.
+ *
+ * @return array{
+ *     errorMessage: string|null, fetchedCount: int, hasStatusFilter: bool, statusCounts: array<string, int>|null,
+ *     entries: array<array-key, mixed>, listMeta: array|null, pageSize: int, totalFiltered: int,
+ *     showPagination: bool, totalPages: int, page: int, pageEntries: array<array-key, mixed>
+ * }
  */
-function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, array $overrides = []): string
+function loadExplorerData(array $config, string $envKey, ?string $apiKey, string $query, bool $forceRefresh, string $statusFilter, ?string $sortKey, string $sortDir, int $page, int $perPage): array
 {
-    $params = array_merge([
-        'env' => $envKey,
-        'api' => $apiKey,
-        'q'   => $query,
-        'p'   => $page,
-    ], $overrides);
+    $errorMessage = null;
+    $hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
+    $statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
+    $entries = [];
+    $fetchedCount = 0;          // alle Einträge der API (vor Filter/Suche)
+    $listMeta = null;
 
-    $params = array_filter($params, static fn ($v) => $v !== null && $v !== '');
-    return '?' . http_build_query($params);
-}
+    if ($apiKey !== null) {
+        $apiCfg = $config['apis'][$apiKey];
+        $baseUrl = $config['environments'][$envKey]['base_url'];
 
-/**
- * Baut den Link für einen klickbaren Spaltenkopf: erstmaliger Klick sortiert
- * aufsteigend, ein weiterer Klick auf dieselbe Spalte kehrt um (asc↔desc).
- * Seite wird auf 0 zurückgesetzt, per_page bleibt erhalten (wie bei anderen
- * Navigationen innerhalb derselben Tabelle).
- */
-function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPage, string $colKey, ?string $currentSortKey, string $currentSortDir, ?string $statusFilter = null): string
-{
-    $nextDir = ($currentSortKey === $colKey && $currentSortDir === 'asc') ? 'desc' : 'asc';
-    return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage, 'status' => $statusFilter]);
-}
+        try {
+            $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
+            $entries = $fetched['entries'];
+            $listMeta = $fetched['list_meta'];
+            $fetchedCount = count($entries);
 
-/*
- * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
- * (clientseitig aus nbf/exp berechnet): lang.php, Keys info.status und
- * info.validity — einheitlich an jeder Stelle verwendet, an der diese
- * Begriffe auftauchen (Spaltenköpfe + list_meta-Panel).
- */
-
-/**
- * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
- * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
- * oder 'validity' (Texte: lang.php, info.*).
- */
-function renderInfoIcon(string $key, bool $mobileOnly = false): string
-{
-    $text = in_array($key, ['status', 'validity'], true) ? t('info.' . $key) : '';
-    if ($text === '') {
-        return '';
-    }
-    // $mobileOnly: zusätzliches Icon direkt in der Tabellenzelle, nur per CSS
-    // auf Mobile sichtbar (siehe .info-icon-cell) -- auf Mobile wird <thead>
-    // (und damit das Spaltenkopf-Icon) komplett ausgeblendet, ohne dieses
-    // zweite Icon gäbe es dort also gar keine Erklärung mehr.
-    $class = 'info-icon' . ($mobileOnly ? ' info-icon-cell' : '');
-    return '<span class="' . $class . '" tabindex="0" role="button" aria-label="Explanation">?'
-        . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
-        . '</span>';
-}
-
-$errorMessage = null;
-$hasStatusFilter = false;   // Umschalter "Alle | Nur gültige" sichtbar (API mit row_status)
-$statusCounts = null;       // ['valid'=>, 'revoked'=>, 'suspended'=>, 'unknown'=>]
-$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
-$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
-$entries = [];
-$fetchedCount = 0;
-$listMeta = null;
-
-if ($apiKey !== null) {
-    $apiCfg = $config['apis'][$apiKey];
-    $baseUrl = $config['environments'][$envKey]['base_url'];
-
-    try {
-        $fetched = getEntriesCached($envKey, $apiKey, $baseUrl, $apiCfg, $forceRefresh, $config['cache_ttl'], $config['apis']);
-        $entries = $fetched['entries'];
-        $listMeta = $fetched['list_meta'];
-        $fetchedCount = count($entries);
-
-        // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
-        // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
-        // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
-        if (!empty($apiCfg['row_status'])) {
-            $hasStatusFilter = true;
-            $statusCounts = statusBucketCounts($entries);
-            if ($statusFilter === 'valid') {
-                $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
-            }
-        }
-
-        $entries = filterEntries($entries, $query);
-
-        if ($sortKey !== null) {
-            $sortCol = null;
-            foreach ($apiCfg['columns'] as $c) {
-                if ($c['key'] === $sortKey) {
-                    $sortCol = $c;
-                    break;
+            // Status-Filter "nur gültige": nur bei APIs mit Statuslist pro Eintrag
+            // (row_status). Zählung über ALLE Einträge (vor der Textsuche), damit
+            // die Zahlen am Umschalter stabil bleiben; nur Statuslist-Wert 0 gilt.
+            if (!empty($apiCfg['row_status'])) {
+                $hasStatusFilter = true;
+                $statusCounts = statusBucketCounts($entries);
+                if ($statusFilter === 'valid') {
+                    $entries = array_values(array_filter($entries, static fn (array $e): bool => statusBucket($e) === 'valid'));
                 }
             }
-            if ($sortCol !== null) {
-                $entries = sortEntries($entries, $sortCol, $sortDir);
+
+            $entries = filterEntries($entries, $query);
+
+            if ($sortKey !== null) {
+                $sortCol = null;
+                foreach ($apiCfg['columns'] as $c) {
+                    if ($c['key'] === $sortKey) {
+                        $sortCol = $c;
+                        break;
+                    }
+                }
+                if ($sortCol !== null) {
+                    $entries = sortEntries($entries, $sortCol, $sortDir);
+                }
             }
+        } catch (Throwable $e) {
+            $errorMessage = $e->getMessage();
         }
-    } catch (Throwable $e) {
-        $errorMessage = $e->getMessage();
     }
+
+    $pageSize = is_int($config['page_size']) ? $config['page_size'] : 20; // fixer Schwellwert: bis 20 Treffer keine Pagination
+    $totalFiltered = count($entries);
+    $showPagination = $totalFiltered > $pageSize;
+
+    if ($showPagination) {
+        $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
+        $page = min($page, $totalPages - 1);
+        $pageEntries = array_slice($entries, $page * $perPage, $perPage);
+    } else {
+        $totalPages = 1;
+        $page = 0;
+        $pageEntries = $entries; // alles auf einer Seite
+    }
+
+    return [
+        'errorMessage' => $errorMessage, 'fetchedCount' => $fetchedCount, 'hasStatusFilter' => $hasStatusFilter, 'statusCounts' => $statusCounts,
+        'entries' => $entries, 'listMeta' => $listMeta, 'pageSize' => $pageSize, 'totalFiltered' => $totalFiltered,
+        'showPagination' => $showPagination, 'totalPages' => $totalPages, 'page' => $page, 'pageEntries' => $pageEntries,
+    ];
 }
 
-// CSV-Export der Tabelle genau so, wie sie angezeigt wird: alle Zeilen, die
-// Suche, Status-Filter und Sortierung durchlaufen haben (nicht nur die aktuelle
-// Seite), mit denselben Spalten wie die Tabelle in Klartext. Die Spalte
-// "Base Registry" (per AJAX nachgeladen) ist bewusst nicht enthalten.
-if (($_GET['export'] ?? '') === 'csv' && $apiKey !== null && $errorMessage === null) {
-    $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('X-Content-Type-Options: nosniff');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: no-store');
+$apis = is_array($config['apis']) ? $config['apis'] : [];
+$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($apis[$apiKey ?? '']['row_status'])) ? 'valid' : '';
+$statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
+$apiCfg = $apiKey !== null ? $apis[$apiKey] : [];
 
-    $out = fopen('php://output', 'wb');
-    fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
-    $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
-    fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
-    foreach ($entries as $entry) {
-        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
+// Ergebnisbereich (Toolbar, Tabelle, Pagination): Liegt die Tabelle im
+// Session-Cache, wird sie direkt in die Seite gerendert. Sonst (erster Aufruf,
+// abgelaufen oder Refresh) liefert die Seite nur Rahmen + Skeleton und
+// assets/result-loader.js holt den Bereich danach per fetch() als Fragment
+// (?fragment=1). Das funktioniert in jedem Browser, unabhängig davon, ob der
+// Server die Antwort stückweise ausliefert. Ausgenommen sind der CSV-Export
+// (braucht die Daten vor dem ersten Byte), die DID-Suche (ihr Ergebnis steht im
+// Seitenrahmen oberhalb der Tabs) und ?sync=1 (Fallback ohne JavaScript).
+$wantsCsv  = ($_GET['export'] ?? '') === 'csv';
+$fragment  = ($_GET['fragment'] ?? '') === '1';
+$syncLoad  = ($_GET['sync'] ?? '') === '1';
+$cacheTtl  = is_int($config['cache_ttl']) ? $config['cache_ttl'] : 300;
+$defer     = $apiKey !== null && !$wantsCsv && !$fragment && !$syncLoad && $didQuery === ''
+    && ($forceRefresh || !entriesCacheIsFresh($envKey, $apiKey, $cacheTtl));
+
+if ($fragment) {
+    // Nur der Ergebnisbereich, ohne Seitenrahmen (wird von result-loader.js geholt).
+    if ($apiKey === null) {
+        http_response_code(400);
+        exit;
     }
-    fclose($out);
+    $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
+    header('Content-Type: text/html; charset=UTF-8');
+    header('Cache-Control: no-store');
+    renderResultArea($config, $envKey, $apiKey, $query, $perPage, $sortKey, $sortDir, $statusFilter, $statusParam, $pageSizeOptions, $data);
     exit;
 }
 
-$pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
-$totalFiltered = count($entries);
-$showPagination = $totalFiltered > $pageSize;
+$data = null;
+if (!$defer) {
+    $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
+    if ($wantsCsv && $apiKey !== null && $data['errorMessage'] === null) {
+        $entries = $data['entries'];
+        $safeName = static fn (string $v): string => (string) preg_replace('/[^A-Za-z0-9_-]/', '', $v);
+        $filename = sprintf('trust-registry-%s-%s-%s.csv', $safeName($envKey), $safeName($apiKey), date('Ymd-His'));
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('X-Content-Type-Options: nosniff');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: no-store');
 
-if ($showPagination) {
-    $totalPages = max(1, (int) ceil($totalFiltered / $perPage));
-    $page = min($page, $totalPages - 1);
-    $pageEntries = array_slice($entries, $page * $perPage, $perPage);
-} else {
-    $totalPages = 1;
-    $page = 0;
-    $pageEntries = $entries; // alles auf einer Seite
+        $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            exit;
+        }
+        fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
+        $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
+        fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
+        foreach ($entries as $entry) {
+            fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell(exportCellText($entry, $c, $envKey, $issuerApi)), $apiCfg['columns'])) . "\r\n");
+        }
+        fclose($out);
+        exit;
+    }
 }
 
 ?>
@@ -662,337 +662,27 @@ if ($showPagination) {
     <?php endforeach; ?>
 </div>
 
-<?php /* Lade-Overlay liegt IMMER im DOM (auch bevor eine API gewählt ist),
-         sonst findet der erste Klick auf einen API-Chip noch kein Element
-         zum Anzeigen - siehe TrustExplorer.attachLoadingOverlay. Oben an
-         den Ergebnisbereich angepinnt, nicht mittig über der ganzen
-         (u.U. langen) Tabelle. */ ?>
-<div class="tre-loading-host">
-<div class="tre-loading-overlay" id="tableLoadingOverlay">
-    <svg class="tre-spinner" width="22" height="22" viewBox="0 0 100 100" aria-hidden="true">
-        <rect class="tre-bar tre-bar-1" x="12" y="14" width="76" height="16" rx="6"></rect>
-        <rect class="tre-bar tre-bar-2" x="12" y="40" width="76" height="16" rx="6"></rect>
-        <rect class="tre-bar tre-bar-3" x="12" y="66" width="48" height="16" rx="6"></rect>
-        <g class="tre-seal-group">
-            <circle class="tre-seal" cx="76" cy="74" r="20"></circle>
-            <path class="tre-check" d="M67 74 L74 81 L87 66" fill="none" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"></path>
-        </g>
-    </svg>
-    <span><?= htmlspecialchars(t('common.loading')) ?></span>
-</div>
-
+<?php /* Ergebnisbereich. Liegt die Tabelle im Session-Cache, wird sie direkt
+         gerendert. Sonst liefert die Seite nur das Skeleton; assets/result-loader.js
+         holt den Bereich per fetch() (?fragment=1) und ersetzt es. So hängt das
+         Skeleton nicht an Server-Streaming/Pufferung. */ ?>
+<div id="treResult"<?= $defer ? ' data-pending="1" data-err="' . htmlspecialchars(t('error.load_failed')) . '" data-retry="' . htmlspecialchars(t('error.retry')) . '"' : '' ?>>
 <?php if ($apiKey === null): ?>
 
     <p style="color:var(--text-3);"><?= htmlspecialchars(t('explorer.select_prompt')) ?></p>
 
-<?php else: ?>
+<?php elseif ($defer): ?>
 
-    <?php
-    $fullUrl      = $config['environments'][$envKey]['base_url'] . $config['apis'][$apiKey]['path'];
-    $cacheMinutes = (int) round($config['cache_ttl'] / 60);
-    $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
-    ?>
-
-    <div class="toolbar">
-        <a class="url" href="<?= htmlspecialchars($fullUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($fullUrl) ?></a>
-        <div class="toolbar-actions">
-            <form method="get" data-tour="filter">
-                <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
-                <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
-                <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
-                <?php if ($perPage !== $config['page_size']): ?>
-                    <input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>">
-                <?php endif; ?>
-                <input type="text" name="q" title="<?= htmlspecialchars(t('toolbar.search_syntax')) ?>" placeholder="<?= htmlspecialchars(t('toolbar.search_placeholder')) ?>" value="<?= htmlspecialchars($query) ?>">
-                <button type="submit"><?= htmlspecialchars(t('common.search_button')) ?></button>
-            </form>
-            <a class="toolbar-btn refresh-btn" title="<?= htmlspecialchars(t($cacheMinutes === 1 ? 'toolbar.refresh_title_one' : 'toolbar.refresh_title_other', [$cacheMinutes])) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['refresh' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.refresh')) ?></a>
-            <?php if ($errorMessage === null && $apiKey !== null): ?>
-                <a class="toolbar-btn spec-btn" title="<?= htmlspecialchars(t('toolbar.export_csv_title')) ?>" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, array_filter(['export' => 'csv', 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('toolbar.export_csv')) ?></a>
-            <?php endif; ?>
-            <?php if ($specUrl !== null): ?>
-                <a class="toolbar-btn spec-btn" href="<?= htmlspecialchars($specUrl) ?>" target="_blank" rel="noopener"><?= htmlspecialchars($apiKey) ?> API Spec ↗</a>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <?php if ($listMeta !== null): ?>
-        <div class="list-meta-panel">
-            <p class="hint"><?= htmlspecialchars(t('listmeta.hint')) ?></p>
-            <div class="list-meta-grid">
-                <div class="list-meta-tile">
-                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_from')) ?></span>
-                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['nbf'])) ?></span>
-                </div>
-                <div class="list-meta-tile">
-                    <span class="lbl"><?= htmlspecialchars(t('listmeta.valid_until')) ?></span>
-                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['exp'])) ?></span>
-                </div>
-                <div class="list-meta-tile">
-                    <span class="lbl"><?= htmlspecialchars(t('listmeta.created_at')) ?></span>
-                    <span class="val"><?= htmlspecialchars(formatUnixTimestamp($listMeta['iat'])) ?></span>
-                </div>
-                <div class="list-meta-tile">
-                    <span class="lbl"><?= htmlspecialchars(t('common.status')) ?> <?= renderInfoIcon('status') ?></span>
-                    <?php
-                        $statusClass = match ($listMeta['status_value']) {
-                            0 => 'status-valid',
-                            1 => 'status-revoked',
-                            2 => 'status-suspended',
-                            default => 'status-unknown',
-                        };
-                    ?>
-                    <span class="val">
-                        <span class="status-badge <?= $statusClass ?>"><?= htmlspecialchars(statusDisplayLabel($listMeta['status_value'], $listMeta['status_label'])) ?></span>
-                    </span>
-                </div>
-                <div class="list-meta-tile">
-                    <span class="lbl"><?= htmlspecialchars(t('common.validity')) ?> <?= renderInfoIcon('validity') ?></span>
-                    <?php $listMetaValidity = computeValidity($listMeta['nbf'], $listMeta['exp']); ?>
-                    <span class="val">
-                        <span class="status-badge <?= $listMetaValidity['class'] ?>"><?= htmlspecialchars($listMetaValidity['label']) ?></span>
-                    </span>
-                </div>
-            </div>
-            <?php if (!empty($listMeta['jwt'])): ?>
-                <details class="list-meta-raw">
-                    <summary><?= htmlspecialchars(t('detail.view_raw')) ?></summary>
-                    <?= renderRawJwt((string) $listMeta['jwt']) ?>
-                </details>
-            <?php endif; ?>
-            <?php if ($listMeta['status_error'] !== null): ?>
-                <p class="list-meta-error"><?= htmlspecialchars(t('listmeta.status_unavailable', [$listMeta['status_error']])) ?></p>
-            <?php endif; ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if ($errorMessage !== null): ?>
-
-        <div class="error"><?= htmlspecialchars(t('explorer.fetch_error', [$errorMessage])) ?></div>
-
-    <?php else: ?>
-
-        <?php $hasBaseCol = !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url']); ?>
-        <?php if ($hasStatusFilter && $statusCounts !== null):
-            $filterBase = ['per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null];
-            $urlAll   = buildUrl($envKey, $apiKey, $query, 0, $filterBase);
-            $urlValid = buildUrl($envKey, $apiKey, $query, 0, $filterBase + ['status' => 'valid']);
-            $hiddenTotal = $statusCounts['revoked'] + $statusCounts['suspended'] + $statusCounts['unknown'];
-            $hiddenParts = [];
-            if ($statusCounts['revoked'] > 0)   { $hiddenParts[] = t('status_filter.n_revoked', [$statusCounts['revoked']]); }
-            if ($statusCounts['suspended'] > 0) { $hiddenParts[] = t('status_filter.n_suspended', [$statusCounts['suspended']]); }
-            if ($statusCounts['unknown'] > 0)   { $hiddenParts[] = t('status_filter.n_unknown', [$statusCounts['unknown']]); }
-        ?>
-            <div class="status-filter" data-tour="filter" role="group" aria-label="<?= htmlspecialchars(t('status_filter.label')) ?>">
-                <span class="status-filter-label"><?= htmlspecialchars(t('status_filter.label')) ?></span>
-                <div class="status-seg">
-                    <a href="<?= htmlspecialchars($urlAll) ?>" class="<?= $statusFilter === '' ? 'active' : '' ?>"<?= $statusFilter === '' ? ' aria-current="true"' : '' ?>><?= htmlspecialchars(t('status_filter.all')) ?> <small><?= $fetchedCount ?></small></a>
-                    <a href="<?= htmlspecialchars($urlValid) ?>" class="<?= $statusFilter === 'valid' ? 'active' : '' ?>"<?= $statusFilter === 'valid' ? ' aria-current="true"' : '' ?>><?= $statusFilter === 'valid' ? '&#10003; ' : '' ?><?= htmlspecialchars(t('status_filter.valid')) ?> <small><?= $statusCounts['valid'] ?></small></a>
-                </div>
-                <?php if ($statusFilter === 'valid'): ?>
-                    <?php if ($hiddenTotal > 0): ?>
-                        <span class="status-filter-note"><?= htmlspecialchars(t('status_filter.hidden', [$hiddenTotal])) ?>: <?= htmlspecialchars(implode(' · ', $hiddenParts)) ?></span>
-                    <?php endif; ?>
-                    <a class="status-filter-reset" href="<?= htmlspecialchars($urlAll) ?>"><?= htmlspecialchars(t('status_filter.reset')) ?> &#10005;</a>
-                <?php endif; ?>
-            </div>
-            <?php if ($statusFilter === 'valid' && $statusCounts['unknown'] > 0): ?>
-                <div class="status-filter-warning"><?= htmlspecialchars(t('status_filter.unknown_warning', [$statusCounts['unknown']])) ?></div>
-            <?php endif; ?>
-        <?php endif; ?>
-
-        <div class="table-scroll">
-        <table>
-            <thead>
-                <tr>
-                    <?php foreach ($config['apis'][$apiKey]['columns'] as $col): ?>
-                        <?php
-                            $isSorted = $sortKey === $col['key'];
-                            $arrow = $isSorted ? ($sortDir === 'asc' ? '&#9650;' : '&#9660;') : '&#8693;';
-                            $sortUrl = buildSortUrl($envKey, $apiKey, $query, $perPage, $col['key'], $sortKey, $sortDir, $statusParam);
-                        ?>
-                        <th>
-                            <a class="sort-link<?= $isSorted ? ' active' : '' ?>" href="<?= htmlspecialchars($sortUrl) ?>">
-                                <?= htmlspecialchars($col['label']) ?>
-                                <span class="sort-arrow"><?= $arrow ?></span>
-                            </a>
-                            <?php if ($col['type'] === 'status_badge'): ?>
-                                <?= renderInfoIcon('status') ?>
-                            <?php elseif ($col['type'] === 'validity_badge'): ?>
-                                <?= renderInfoIcon('validity') ?>
-                            <?php endif; ?>
-                        </th>
-                    <?php endforeach; ?>
-                    <?php if ($hasBaseCol): ?>
-                        <th><?= htmlspecialchars(t('base.title')) ?></th>
-                    <?php endif; ?>
-                </tr>
-            </thead>
-            <tbody>
-                <?php
-                $columnCount = count($config['apis'][$apiKey]['columns']) + ($hasBaseCol ? 1 : 0);
-                $isExpandable = !empty($config['apis'][$apiKey]['expandable']);
-                ?>
-                <?php if (empty($pageEntries)): ?>
-                    <tr><td colspan="<?= $columnCount ?>">
-                        <link rel="stylesheet" href="<?= htmlspecialchars(assetUrl('ui-extras.css')) ?>">
-                        <div class="empty-state">
-                            <span class="empty-icon" role="img" aria-label="<?= htmlspecialchars(t('empty.icon_label')) ?>">
-                                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="21" cy="21" r="12"/><path d="M30 30l11 11"/><path d="M16 18v2M26 18v2"/><path d="M17 27c2.5-2.5 5.5-2.5 8 0"/></svg>
-                            </span>
-                            <?php if ($statusFilter === 'valid' && $query === ''): ?>
-                                <div class="empty-title"><?= htmlspecialchars(t('status_filter.no_valid')) ?></div>
-                            <?php else: ?>
-                                <div class="empty-title"><?= htmlspecialchars(t('table.no_entries')) ?></div>
-                                <?php if ($query !== ''): ?>
-                                    <div class="empty-hint"><?= htmlspecialchars(t('empty.hint_search')) ?></div>
-                                <?php endif; ?>
-                            <?php endif; ?>
-                            <div class="empty-actions">
-                                <?php if ($query !== ''): ?>
-                                    <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, '', 0, array_filter(['per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('empty.reset_search')) ?></a>
-                                <?php endif; ?>
-                                <?php if ($statusFilter === 'valid'): ?>
-                                    <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage !== $config['page_size'] ? $perPage : null])) ?>"><?= htmlspecialchars(t('status_filter.show_all', [$fetchedCount])) ?></a>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                        <script>window.UX_CONFIG = <?= json_encode([
-                            'endpoint' => 'ui_extras.php',
-                            'i18n'     => [
-                                'title' => t('ux.title'), 'moves' => t('ux.moves'), 'moves_short' => t('ux.moves_short'),
-                                'close' => t('ux.close'), 'name' => t('ux.name'), 'save' => t('ux.save'), 'again' => t('ux.again'),
-                                'top' => t('ux.top'), 'none' => t('ux.none'), 'won' => t('ux.won'), 'rank' => t('ux.rank'),
-                                'error' => t('ux.error'), 'card' => t('ux.card'),
-                            ],
-                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?>;</script>
-                        <script src="<?= htmlspecialchars(assetUrl('ui-extras.js')) ?>"></script>
-                    </td></tr>
-                <?php endif; ?>
-                <?php foreach ($pageEntries as $i => $entry): ?>
-                    <tr class="entry-row<?= $isExpandable ? ' expandable' : '' ?>">
-                        <?php foreach ($config['apis'][$apiKey]['columns'] as $j => $col): ?>
-                            <td data-label="<?= htmlspecialchars($col['label']) ?>" class="<?= htmlspecialchars($col['class'] ?? '') ?>">
-                                <?php if ($isExpandable && $j === 0): ?>
-                                    <span class="caret">&#9656;</span>
-                                <?php endif; ?>
-                                <?php if ($col['type'] === 'multilang'): ?>
-                                    <?= formatMultilangCell($entry, $col['key']) ?>
-                                <?php elseif ($col['type'] === 'registry_ids'): ?>
-                                    <?= formatRegistryIdsCell(getPath($entry, $col['key'])) ?>
-                                <?php elseif ($col['type'] === 'status_badge'): ?>
-                                    <?= formatStatusBadgeCell($entry) ?> <?= renderInfoIcon('status', true) ?>
-                                <?php elseif ($col['type'] === 'vct_values'): ?>
-                                    <?= formatVctValuesCell($entry) ?>
-                                <?php elseif ($col['type'] === 'can_issue'): ?>
-                                    <?= formatCanIssueCell($entry) ?>
-                                <?php elseif ($col['type'] === 'validity_badge'): ?>
-                                    <?= formatValidityBadgeCell($entry) ?> <?= renderInfoIcon('validity', true) ?>
-                                <?php elseif ($col['type'] === 'issuer_count'): ?>
-                                    <?= formatIssuerCountCell($entry, $envKey, $apiCfg['issuer_count_from'] ?? 'piaTS') ?>
-                                <?php else: ?>
-                                    <?= formatCellValue(getPath($entry, $col['key']), $col['type']) ?>
-                                <?php endif; ?>
-                            </td>
-                        <?php endforeach; ?>
-                        <?php if ($hasBaseCol):
-                            $entryDid = getPath($entry, $apiCfg['base_registry_did_field']);
-                            $entryDid = is_string($entryDid) ? $entryDid : '';
-                        ?>
-                            <td class="br-cell" data-label="<?= htmlspecialchars(t('base.title')) ?>"<?= $entryDid !== '' ? ' data-br-did="' . htmlspecialchars($entryDid) . '"' : '' ?>>
-                                <?php if ($entryDid === ''): ?>-<?php endif; ?>
-                            </td>
-                        <?php endif; ?>
-                    </tr>
-                    <?php if ($isExpandable): ?>
-                        <tr class="detail-row">
-                            <td colspan="<?= $columnCount ?>">
-                                <?php if (!empty($apiCfg['issuer_count_from'])): ?>
-                                    <?= renderIssuerList($entry['_issuers'] ?? []) ?>
-                                <?php elseif ($hasBaseCol && $entryDid !== ''): ?>
-                                    <div class="detail-tabs" role="tablist">
-                                        <button type="button" role="tab" class="active" data-br-tab="statement"><?= htmlspecialchars(t('base.tab.statement')) ?></button>
-                                        <button type="button" role="tab" data-br-tab="base"><?= htmlspecialchars(t('base.title')) ?> <span class="tab-chip" data-br-tab-chip></span></button>
-                                    </div>
-                                    <div class="detail-pane" data-br-pane-name="statement"><?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?></div>
-                                    <div class="detail-pane" data-br-pane-name="base" data-br-did="<?= htmlspecialchars($entryDid) ?>" hidden></div>
-                                <?php else: ?>
-                                    <?= renderEntryDetail($entry, $apiCfg['show_header'] ?? true) ?>
-                                <?php endif; ?>
-                            </td>
-                        </tr>
-                    <?php endif; ?>
-                <?php endforeach; ?>
-            </tbody>
-        </table>
-        </div>
-
-        <div class="pagination">
-            <?php if ($showPagination): ?>
-                <form method="get" class="page-size-form">
-                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
-                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
-                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
-                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
-                    <input type="hidden" name="p" value="0">
-                    <label><?= htmlspecialchars(t('pagination.per_page')) ?>
-                        <select name="per_page" onchange="this.form.submit()">
-                            <?php foreach ($pageSizeOptions as $opt): ?>
-                                <option value="<?= $opt ?>" <?= $opt === $perPage ? 'selected' : '' ?>><?= $opt ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </label>
-                </form>
-
-                <div class="page-numbers">
-                    <?php if ($page > 0): ?>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, 0, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.first')) ?>">&laquo;</a>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.prev')) ?>">&lsaquo;</a>
-                    <?php else: ?>
-                        <span class="disabled nav-edge">&laquo;</span>
-                        <span class="disabled nav-step">&lsaquo;</span>
-                    <?php endif; ?>
-
-                    <?php foreach (paginationRange($page + 1, $totalPages) as $item): ?>
-                        <?php if ($item === '…'): ?>
-                            <span class="ellipsis">…</span>
-                        <?php elseif ($item === $page + 1): ?>
-                            <span class="page-num current"><?= $item ?></span>
-                        <?php else: ?>
-                            <a class="page-num" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $item - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>"><?= $item ?></a>
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-
-                    <?php if ($page + 1 < $totalPages): ?>
-                        <a class="nav-step" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page + 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.next')) ?>">&rsaquo;</a>
-                        <a class="nav-edge" href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $totalPages - 1, ['per_page' => $perPage, 'status' => $statusParam])) ?>" title="<?= htmlspecialchars(t('pagination.last')) ?>">&raquo;</a>
-                    <?php else: ?>
-                        <span class="disabled nav-step">&rsaquo;</span>
-                        <span class="disabled nav-edge">&raquo;</span>
-                    <?php endif; ?>
-                </div>
-
-                <form method="get" class="page-jump-form" onsubmit="var i=this.querySelector('input[name=p]'); var v=parseInt(i.value,10); i.value = isNaN(v) ? 0 : Math.max(0, v - 1);">
-                    <input type="hidden" name="env" value="<?= htmlspecialchars($envKey) ?>">
-                    <input type="hidden" name="api" value="<?= htmlspecialchars($apiKey) ?>">
-                    <?php if ($statusFilter !== ''): ?><input type="hidden" name="status" value="valid"><?php endif; ?>
-                    <?php if ($query !== ''): ?><input type="hidden" name="q" value="<?= htmlspecialchars($query) ?>"><?php endif; ?>
-                    <?php if ($perPage !== $config['page_size']): ?><input type="hidden" name="per_page" value="<?= htmlspecialchars((string) $perPage) ?>"><?php endif; ?>
-                    <span><?= htmlspecialchars(t('pagination.page')) ?></span>
-                    <input type="text" inputmode="numeric" name="p" value="<?= $page + 1 ?>" style="width:44px; text-align:center;">
-                    <span><?= htmlspecialchars(t('pagination.of')) ?> <?= $totalPages ?></span>
-                </form>
-            <?php endif; ?>
-        </div>
-
-        <p class="meta">
-            <?= htmlspecialchars(t('meta.entries', [$totalFiltered])) ?><?= $query !== '' ? ' ' . htmlspecialchars(t('meta.filtered_from', [$fetchedCount])) : '' ?><?= $statusFilter === 'valid' ? ' ' . htmlspecialchars(t('status_filter.meta', [$fetchedCount])) : '' ?>
-            <?php if ($showPagination): ?>
-                &middot; <?= htmlspecialchars(t('meta.showing', [$page * $perPage + 1, min($totalFiltered, ($page + 1) * $perPage)])) ?>
-            <?php endif; ?>
+    <noscript>
+        <p class="error"><?= htmlspecialchars(t('explorer.no_js')) ?>
+            <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page, array_filter(['sync' => 1, 'per_page' => $perPage !== $defaultPerPage ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('explorer.no_js_link')) ?></a>
         </p>
+    </noscript>
+    <?= renderResultSkeleton($apiCfg, 10, !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url'])) ?>
 
-    <?php endif; ?>
+<?php elseif ($data !== null): ?>
+
+    <?php renderResultArea($config, $envKey, $apiKey, $query, $perPage, $sortKey, $sortDir, $statusFilter, $statusParam, $pageSizeOptions, $data); ?>
 
 <?php endif; ?>
 </div>
@@ -1013,46 +703,34 @@ window.BR_CONFIG = <?= json_encode([
 </script>
 <script src="<?= htmlspecialchars(assetUrl('base-registry.js')) ?>"></script>
 <script src="<?= htmlspecialchars(assetUrl('raw-view.js')) ?>"></script>
+<script src="<?= htmlspecialchars(assetUrl('result-loader.js')) ?>"></script>
 <script>
-document.querySelectorAll('tr.entry-row.expandable').forEach(function (row) {
-    row.addEventListener('click', function () {
-        var detail = row.nextElementSibling;
-        if (!detail || !detail.classList.contains('detail-row')) return;
-        var isOpen = detail.classList.toggle('open');
-        var caret = row.querySelector('.caret');
-        if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
-    });
-});
+// Delegierte Handler: gelten auch für Zeilen/Icons, die erst später per
+// result-loader.js nachgeladen werden.
+document.addEventListener('click', function (e) {
+    var target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
 
-// Info-Icons (Status/Validity-Erklärung): Klick/Tap toggelt die Tooltip-
-// Sichtbarkeit (nötig für Touch-Geräte ohne Hover), Klick ausserhalb
-// schliesst alle offenen Tooltips wieder.
-document.querySelectorAll('.info-icon').forEach(function (icon) {
-    icon.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var wasOpen = icon.classList.contains('open');
-        document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
-        if (!wasOpen) icon.classList.add('open');
-    });
-});
-document.addEventListener('click', function () {
+    // Info-Icons (Status/Validity-Erklärung): Klick/Tap toggelt die Tooltip-
+    // Sichtbarkeit (nötig für Touch-Geräte ohne Hover), Klick ausserhalb
+    // schliesst alle offenen Tooltips wieder.
+    var icon = target.closest('.info-icon');
+    var wasOpen = icon ? icon.classList.contains('open') : false;
     document.querySelectorAll('.info-icon.open').forEach(function (i) { i.classList.remove('open'); });
-});
+    if (icon) {
+        if (!wasOpen) icon.classList.add('open');
+        return;
+    }
 
-// Lade-Spinner über der Tabelle: bei allem, was einen Seiten-Reload mit neu
-// berechneter Tabelle auslöst (Umgebung/API wechseln, suchen, sortieren,
-// paginieren, Refresh) - spürbar z.B. bei vqPS mit 1500+ Einträgen.
-TrustExplorer.attachLoadingOverlay('tableLoadingOverlay', [
-    '.tabs a',
-    '.api-chips a',
-    '.toolbar form',
-    '.toolbar-btn.refresh-btn',
-    '.sort-link',
-    '.pagination a',
-    '.page-size-form select',
-    '.page-jump-form',
-    '.did-search form',
-]);
+    // Aufklappbare Zeilen
+    var row = target.closest('tr.entry-row.expandable');
+    if (!row) return;
+    var detail = row.nextElementSibling;
+    if (!detail || !detail.classList.contains('detail-row')) return;
+    var isOpen = detail.classList.toggle('open');
+    var caret = row.querySelector('.caret');
+    if (caret) caret.innerHTML = isOpen ? '&#9662;' : '&#9656;';
+});
 </script>
 
 </body>
