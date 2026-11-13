@@ -87,8 +87,8 @@ if ($didQuery !== '') {
  *
  * @return array{
  *     errorMessage: string|null, fetchedCount: int, hasStatusFilter: bool, statusCounts: array<string, int>|null,
- *     entries: list<array>, listMeta: array|null, pageSize: int, totalFiltered: int,
- *     showPagination: bool, totalPages: int, page: int, pageEntries: list<array>
+ *     entries: array<array-key, mixed>, listMeta: array|null, pageSize: int, totalFiltered: int,
+ *     showPagination: bool, totalPages: int, page: int, pageEntries: array<array-key, mixed>
  * }
  */
 function loadExplorerData(array $config, string $envKey, ?string $apiKey, string $query, bool $forceRefresh, string $statusFilter, ?string $sortKey, string $sortDir, int $page, int $perPage): array
@@ -140,7 +140,7 @@ function loadExplorerData(array $config, string $envKey, ?string $apiKey, string
         }
     }
 
-    $pageSize = $config['page_size']; // fixer Schwellwert: bis 20 Treffer keine Pagination
+    $pageSize = is_int($config['page_size']) ? $config['page_size'] : 20; // fixer Schwellwert: bis 20 Treffer keine Pagination
     $totalFiltered = count($entries);
     $showPagination = $totalFiltered > $pageSize;
 
@@ -161,9 +161,10 @@ function loadExplorerData(array $config, string $envKey, ?string $apiKey, string
     ];
 }
 
-$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($config['apis'][$apiKey ?? '']['row_status'])) ? 'valid' : '';
+$apis = is_array($config['apis']) ? $config['apis'] : [];
+$statusFilter = (($_GET['status'] ?? '') === 'valid' && !empty($apis[$apiKey ?? '']['row_status'])) ? 'valid' : '';
 $statusParam = $statusFilter !== '' ? $statusFilter : null; // für buildUrl (null = Parameter weglassen)
-$apiCfg = $apiKey !== null ? $config['apis'][$apiKey] : [];
+$apiCfg = $apiKey !== null ? $apis[$apiKey] : [];
 
 // Ergebnisbereich (Toolbar, Tabelle, Pagination): Liegt die Tabelle im
 // Session-Cache, wird sie direkt in die Seite gerendert. Sonst (erster Aufruf,
@@ -198,13 +199,17 @@ if (!$defer) {
     $data = loadExplorerData($config, $envKey, $apiKey, $query, $forceRefresh, $statusFilter, $sortKey, $sortDir, $page, $perPage);
     if ($wantsCsv && $apiKey !== null && $data['errorMessage'] === null) {
         $entries = $data['entries'];
-        $filename = sprintf('trust-registry-%s-%s-%s.csv', preg_replace('/[^A-Za-z0-9_-]/', '', $envKey), preg_replace('/[^A-Za-z0-9_-]/', '', $apiKey), date('Ymd-His'));
+        $safeName = static fn (string $v): string => (string) preg_replace('/[^A-Za-z0-9_-]/', '', $v);
+        $filename = sprintf('trust-registry-%s-%s-%s.csv', $safeName($envKey), $safeName($apiKey), date('Ymd-His'));
         header('Content-Type: text/csv; charset=UTF-8');
         header('X-Content-Type-Options: nosniff');
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         header('Cache-Control: no-store');
 
         $out = fopen('php://output', 'wb');
+        if ($out === false) {
+            exit;
+        }
         fwrite($out, "\xEF\xBB\xBF"); // UTF-8-BOM: Excel erkennt Umlaute korrekt
         $issuerApi = $apiCfg['issuer_count_from'] ?? 'piaTS';
         fwrite($out, implode(';', array_map(static fn (array $c): string => csvCell((string) $c['label']), $apiCfg['columns'])) . "\r\n");
