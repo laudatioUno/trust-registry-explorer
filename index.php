@@ -13,8 +13,9 @@ $config = require __DIR__ . '/config.php';
 // Schlüssel (und für die statische Analyse nicht mehr "tainted").
 $requestedEnv = requestString($_GET, 'env');
 $requestedApi = requestString($_GET, 'api');
-$envKey = (string) array_key_first($config['environments']);
-foreach ($config['environments'] as $knownEnv => $_) {
+$environments = is_array($config['environments']) ? $config['environments'] : [];
+$envKey = (string) array_key_first($environments);
+foreach ($environments as $knownEnv => $_) {
     if ((string) $knownEnv === $requestedEnv) {
         $envKey = (string) $knownEnv;
         break;
