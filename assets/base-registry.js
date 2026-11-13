@@ -278,5 +278,9 @@
         }
     }, true);
 
+    // Wird von result-loader.js aufgerufen, nachdem der Ergebnisbereich nachgeladen wurde.
+    window.TrustExplorer = window.TrustExplorer || {};
+    window.TrustExplorer.initBaseRegistry = initCells;
+
     document.addEventListener('DOMContentLoaded', initCells);
 })();

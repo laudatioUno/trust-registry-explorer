@@ -2325,55 +2325,12 @@ function renderTourAssets(): string
 
 
 /**
- * Schickt alles bisher Ausgegebene sofort an den Browser (Streaming des
- * Seitenrahmens, bevor die langsame Registry-Abfrage läuft).
- */
-function flushOutput(bool $pad = false): void
-{
-    if ($pad) {
-        // Manche Server-Schichten (FastCGI/Apache/Proxy) reichen eine Antwort erst
-        // weiter, wenn ein interner Puffer voll ist, und halten sonst den Rest
-        // zurück (hier: die Skeleton-Balken). Ein HTML-Kommentar als Polster
-        // schiebt den relevanten Teil über diese Schwelle; er ist unsichtbar.
-        echo '<!--' . str_repeat(' ', 16384) . "-->\n";
-    }
-    while (ob_get_level() > 0) {
-        @ob_end_flush();
-    }
-    flush();
-}
-
-/**
- * Merker "Seite wird gerade gestreamt und ist noch nicht fertig". Bricht PHP
- * mittendrin hart ab (Fatal Error, Timeout), würde das Skeleton sonst für immer
- * stehen bleiben: der Shutdown-Handler blendet es dann aus und zeigt einen Fehler.
- */
-function streamGuard(?bool $open = null): bool
-{
-    static $isOpen = false;
-    static $registered = false;
-    if ($open !== null) {
-        $isOpen = $open;
-        if ($open && !$registered) {
-            $registered = true;
-            register_shutdown_function(static function (): void {
-                if (streamGuard()) {
-                    echo '<style>#treSkeleton { display: none; }</style><div class="error">'
-                        . htmlspecialchars(t('explorer.fetch_error', [t('error.stream_aborted')])) . '</div>';
-                }
-            });
-        }
-    }
-    return $isOpen;
-}
-
-/**
  * Skeleton für den Ergebnisbereich, bis die Tabelle da ist. Nutzt dieselben
  * Klassen wie die echte Ausgabe (list-meta-*, table, entry-row mit data-label),
  * damit Abstände und die Mobile-Kartenansicht übereinstimmen und beim Austausch
  * nichts springt. Die Spaltenköpfe sind schon aus der Konfiguration bekannt.
- * Wird durch '#treSkeleton { display: none }' ausgeblendet, sobald der echte
- * Inhalt folgt.
+ * Wird von assets/result-loader.js durch den nachgeladenen Ergebnisbereich
+ * ersetzt (siehe index.php, #treResult).
  */
 function renderResultSkeleton(array $apiCfg, int $rows = 10, bool $hasBaseCol = false): string
 {
@@ -2439,4 +2396,64 @@ function renderResultSkeleton(array $apiCfg, int $rows = 10, bool $hasBaseCol = 
     $html .= '</tbody></table></div>';
 
     return $html;
+}
+
+/**
+ * Baut eine URL zu dieser Seite mit den aktuellen Parametern, überschrieben
+ * durch $overrides. Damit bleiben Umgebung/API/Suche beim Navigieren erhalten.
+ * per_page wird NUR übernommen, wenn es explizit in $overrides steht (z.B. für
+ * die Pagination-Links) — beim Umgebungs-/API-Wechsel via Tabs/Chips fällt die
+ * Seitengrösse absichtlich auf den Standardwert zurück.
+ */
+function buildUrl(string $envKey, ?string $apiKey, string $query, int $page, array $overrides = []): string
+{
+    $params = array_merge([
+        'env' => $envKey,
+        'api' => $apiKey,
+        'q'   => $query,
+        'p'   => $page,
+    ], $overrides);
+
+    $params = array_filter($params, static fn ($v) => $v !== null && $v !== '');
+    return '?' . http_build_query($params);
+}
+
+/**
+ * Baut den Link für einen klickbaren Spaltenkopf: erstmaliger Klick sortiert
+ * aufsteigend, ein weiterer Klick auf dieselbe Spalte kehrt um (asc↔desc).
+ * Seite wird auf 0 zurückgesetzt, per_page bleibt erhalten (wie bei anderen
+ * Navigationen innerhalb derselben Tabelle).
+ */
+function buildSortUrl(string $envKey, string $apiKey, string $query, int $perPage, string $colKey, ?string $currentSortKey, string $currentSortDir, ?string $statusFilter = null): string
+{
+    $nextDir = ($currentSortKey === $colKey && $currentSortDir === 'asc') ? 'desc' : 'asc';
+    return buildUrl($envKey, $apiKey, $query, 0, ['sort' => $colKey, 'dir' => $nextDir, 'per_page' => $perPage, 'status' => $statusFilter]);
+}
+
+/*
+ * Erklärungstexte für Status (aus der Statuslist aufgelöst) und Validity
+ * (clientseitig aus nbf/exp berechnet): lang.php, Keys info.status und
+ * info.validity — einheitlich an jeder Stelle verwendet, an der diese
+ * Begriffe auftauchen (Spaltenköpfe + list_meta-Panel).
+ */
+
+/**
+ * Rendert ein kleines "?"-Info-Icon mit Tooltip (Hover auf Desktop, Tap auf
+ * Mobile/Touch via JS-Toggle, Tastatur-fokussierbar). $key ist 'status'
+ * oder 'validity' (Texte: lang.php, info.*).
+ */
+function renderInfoIcon(string $key, bool $mobileOnly = false): string
+{
+    $text = in_array($key, ['status', 'validity'], true) ? t('info.' . $key) : '';
+    if ($text === '') {
+        return '';
+    }
+    // $mobileOnly: zusätzliches Icon direkt in der Tabellenzelle, nur per CSS
+    // auf Mobile sichtbar (siehe .info-icon-cell) -- auf Mobile wird <thead>
+    // (und damit das Spaltenkopf-Icon) komplett ausgeblendet, ohne dieses
+    // zweite Icon gäbe es dort also gar keine Erklärung mehr.
+    $class = 'info-icon' . ($mobileOnly ? ' info-icon-cell' : '');
+    return '<span class="' . $class . '" tabindex="0" role="button" aria-label="Explanation">?'
+        . '<span class="info-tooltip">' . htmlspecialchars($text) . '</span>'
+        . '</span>';
 }

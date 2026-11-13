@@ -452,6 +452,15 @@
         }
     }
 
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-    else init();
+    // Auf index.php wird der Ergebnisbereich teils nachgeladen (result-loader.js):
+    // die Tour startet erst, wenn Tabelle bzw. Skeleton-Ersatz da sind, damit
+    // Schritte auf Zeilen/Toolbar ihr Ziel finden.
+    function start() {
+        var te = window.TrustExplorer;
+        if (te && typeof te.whenResultReady === 'function') te.whenResultReady(init);
+        else init();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+    else start();
 })();

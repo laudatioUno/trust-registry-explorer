@@ -25,7 +25,7 @@ A lightweight PHP tool for browsing and searching the [swiyu](https://www.eid.ad
 - **Docker support** — `docker compose up -d` runs the Explorer (Apache + PHP) and the History collector in containers, nothing to install on the host except Docker; History data lives in a named volume and survives restarts and image updates
 - **Preview marker** — an optional `storage/.preview` file switches a deployment into "preview look" (badge, greyed-out favicon and header logo, `[Preview]` tab title, `noindex`); see *Marking a preview instance*. The logo/title in the header is a link back to the home page
 - **Loading spinner** — the logo doubles as a subtle animated indicator (bars pulse, seal pops) shown over the table/chart while a page reload is in flight, e.g. switching to an API with 1'500+ entries (vqPS)
-- **Skeleton loading** — when a table is not yet in the session cache, the page frame (tabs, toolbar) and a skeleton of the result (real column headers, shimmering placeholder rows; with the metadata tiles on the trust lists) are sent immediately, and the data follows as soon as the registry has answered. No JavaScript needed; the skeleton disappears once the real content arrives. Needs a web server that does not buffer PHP output; on a buffering host the page just shows up all at once, as before
+- **Skeleton loading** — when a table is not yet in the session cache, the server sends only the page frame (tabs, API chips) plus a skeleton of the result (real column headers, shimmering placeholder rows; with the metadata tiles on the trust lists). A small script (`assets/result-loader.js`) then fetches the result area from the same URL with `?fragment=1` and swaps it in. This works in every browser and does not depend on server-side streaming or output buffering. Without JavaScript a link loads the table server-side (`?sync=1`); cached tables, CSV export and the DID search are rendered directly
 
 ## Screenshot
 
@@ -227,6 +227,8 @@ Three files, each with a single responsibility:
 | `collect.php` | CLI-only nightly collector for the History feature — counts all trust statements per environment/API and stores a snapshot in SQLite |
 | `history.php` | The History UI: time range picker, environment/API curve selection matrix, Chart.js line chart |
 | `base_registry.php` | JSON endpoint used by the browser to load the Base Registry chip/detail for one DID (host from `config.php`, only the UUID is taken from the DID) |
+| `result_view.php` | `renderResultArea()`: the result area of `index.php` (toolbar, list metadata, status switch, table, pagination); rendered inline or as the `?fragment=1` response |
+| `assets/result-loader.js` | Fetches the result area after the skeleton and swaps it in; offers `TrustExplorer.whenResultReady()` (used by the tour) |
 | `assets/base-registry.css`, `assets/base-registry.js` | Styling and front-end logic (lazy chip loading, tabs, DID log dialog) for the Base Registry views |
 | `Dockerfile`, `docker-compose.yml`, `.dockerignore` | Container image (official `php:8.3-apache`) and the `web` + `collector` services with the persistent `storage` volume |
 | `docker/apache.conf` | Apache settings for the container — denies web access to `storage/`, dotfiles and `collect.php` |

@@ -231,10 +231,10 @@
 .top-nav a.tour-help:hover { background: var(--accent-fill); border-color: var(--accent-fill); color: var(--on-accent); }
 
 /* ---- Skeleton-Platzhalter (Ergebnisbereich, bis die Registry-Daten da sind) ----
- * Liegt im selben Dokument wie der spätere Inhalt und wird per
- * '#treSkeleton { display: none }' ausgeblendet, sobald dieser folgt. Nutzt
- * dieselben Klassen wie die echte Ausgabe (toolbar, list-meta-*, table,
- * entry-row), damit Abstände und die Mobile-Kartenansicht passen. */
+ * Steht in #treResult und wird von assets/result-loader.js durch den per fetch()
+ * geholten Ergebnisbereich ersetzt. Nutzt dieselben Klassen wie die echte
+ * Ausgabe (toolbar, list-meta-*, table, entry-row), damit Abstände und die
+ * Mobile-Kartenansicht passen. */
 .tre-skel { --skel-base: color-mix(in srgb, var(--text) 8%, var(--surface)); --skel-hi: color-mix(in srgb, var(--text) 16%, var(--surface)); }
 .tre-skel-bar {
     display: inline-block; vertical-align: middle;
