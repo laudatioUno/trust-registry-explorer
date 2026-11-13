@@ -38,9 +38,10 @@ $forceRefresh = isset($_GET['refresh']);
 // diesen Wert nicht explizit mitgibt (z.B. Umgebungs-/API-Wechsel), auf den
 // Standardwert aus config.php zurück — kein dauerhaftes Merken gewünscht.
 $pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
+$defaultPerPage = is_int($config['page_size']) ? $config['page_size'] : 20;
 $perPage = requestInt($_GET, 'per_page', (int) $config['page_size']);
 if (!in_array($perPage, $pageSizeOptions, true)) {
-    $perPage = is_int($config['page_size']) ? $config['page_size'] : 20;
+    $perPage = $defaultPerPage;
 }
 
 // Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
@@ -669,7 +670,7 @@ if (!$defer) {
 
     <noscript>
         <p class="error"><?= htmlspecialchars(t('explorer.no_js')) ?>
-            <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page, array_filter(['sync' => 1, 'per_page' => $perPage !== $config['page_size'] ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('explorer.no_js_link')) ?></a>
+            <a href="<?= htmlspecialchars(buildUrl($envKey, $apiKey, $query, $page, array_filter(['sync' => 1, 'per_page' => $perPage !== $defaultPerPage ? $perPage : null, 'sort' => $sortKey, 'dir' => $sortKey !== null ? $sortDir : null, 'status' => $statusParam]))) ?>"><?= htmlspecialchars(t('explorer.no_js_link')) ?></a>
         </p>
     </noscript>
     <?= renderResultSkeleton($apiCfg, 10, !empty($apiCfg['base_registry_did_field']) && !empty($config['environments'][$envKey]['base_registry_url'])) ?>
