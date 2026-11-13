@@ -13,7 +13,7 @@ $config = require __DIR__ . '/config.php';
 // Schlüssel (und für die statische Analyse nicht mehr "tainted").
 $requestedEnv = requestString($_GET, 'env');
 $requestedApi = requestString($_GET, 'api');
-$envKey = array_key_first($config['environments']);
+$envKey = (string) array_key_first($config['environments']);
 foreach ($config['environments'] as $knownEnv => $_) {
     if ((string) $knownEnv === $requestedEnv) {
         $envKey = (string) $knownEnv;
@@ -39,7 +39,7 @@ $forceRefresh = isset($_GET['refresh']);
 $pageSizeOptions = $config['page_size_options'] ?? [$config['page_size']];
 $perPage = requestInt($_GET, 'per_page', (int) $config['page_size']);
 if (!in_array($perPage, $pageSizeOptions, true)) {
-    $perPage = $config['page_size'];
+    $perPage = is_int($config['page_size']) ? $config['page_size'] : 20;
 }
 
 // Spalten-Sortierung: welche Spalte (per key) + Richtung. Fällt wie per_page
@@ -51,7 +51,7 @@ $sortDir = ($_GET['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
 // ---- Globale DID-Suche (unabhängig von der Umgebungs-/API-Auswahl unten) ----
 
 $didQuery = trim(requestString($_GET, 'did'));
-$didEnv   = requestString($_GET, 'did_env', (string) $envKey);
+$didEnv   = requestString($_GET, 'did_env', $envKey);
 if (!isset($config['environments'][$didEnv])) {
     $didEnv = $envKey;
 }
@@ -176,7 +176,7 @@ $fragment  = ($_GET['fragment'] ?? '') === '1';
 $syncLoad  = ($_GET['sync'] ?? '') === '1';
 $cacheTtl  = is_int($config['cache_ttl']) ? $config['cache_ttl'] : 300;
 $defer     = $apiKey !== null && !$wantsCsv && !$fragment && !$syncLoad && $didQuery === ''
-    && ($forceRefresh || !entriesCacheIsFresh((string) $envKey, $apiKey, $cacheTtl));
+    && ($forceRefresh || !entriesCacheIsFresh($envKey, $apiKey, $cacheTtl));
 
 if ($fragment) {
     // Nur der Ergebnisbereich, ohne Seitenrahmen (wird von result-loader.js geholt).

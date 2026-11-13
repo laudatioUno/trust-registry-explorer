@@ -230,6 +230,7 @@ $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
                             <?php endif; ?>
                         </td>
                     <?php endforeach; ?>
+                    <?php $entryDid = ''; ?>
                     <?php if ($hasBaseCol):
                         $entryDid = getPath($entry, $apiCfg['base_registry_did_field']);
                         $entryDid = is_string($entryDid) ? $entryDid : '';
@@ -289,7 +290,7 @@ $specUrl      = $config['apis'][$apiKey]['doc_url'] ?? null;
                 <?php endif; ?>
 
                 <?php foreach (paginationRange($page + 1, $totalPages) as $item): ?>
-                    <?php if ($item === '…'): ?>
+                    <?php if (!is_int($item)): ?>
                         <span class="ellipsis">…</span>
                     <?php elseif ($item === $page + 1): ?>
                         <span class="page-num current"><?= $item ?></span>
